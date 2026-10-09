@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <title>Mis Clientes TMX</title>
+    <meta name="description" content="CRM personal para gestionar clientes, ventas y seguimiento de Thermomix" />
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#29A352" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Mis Clientes TMX" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Mis Clientes TMX" />
+    <meta property="og:description" content="CRM personal para gestionar clientes, ventas y seguimiento de Thermomix" />
+    <meta property="og:type" content="website" />
+  </head>
+
+  <body>
+    <script>
+      // Limpieza one-shot: desregistra service workers antiguos y borra cachés del SW
+      // para forzar que la próxima carga traiga el bundle nuevo.
+      // - Se ejecuta UNA sola vez por dispositivo (flag "sw_force_refresh_v2").
+      // - NO toca otros datos de localStorage (reminders, etc. están a salvo).
+      (function () {
+        try {
+          if (!("serviceWorker" in navigator)) return;
+          if (localStorage.getItem("sw_force_refresh_v2") === "1") return;
+          (async function () {
+            try {
+              const regs = await navigator.serviceWorker.getRegistrations();
+              await Promise.all(regs.map(function (r) { return r.unregister(); }));
+              if ("caches" in window) {
+                const keys = await caches.keys();
+                await Promise.all(keys.map(function (k) { return caches.delete(k); }));
+              }
+              localStorage.setItem("sw_force_refresh_v2", "1");
+              location.reload();
+            } catch (e) {
+              console.error("[sw cleanup] error:", e);
+              // Si falla la limpieza, marcamos el flag igual para no entrar en bucle.
+              try { localStorage.setItem("sw_force_refresh_v2", "1"); } catch (_) {}
+            }
+          })();
+        } catch (e) {
+          console.error("[sw cleanup] outer error:", e);
+        }
+      })();
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          // La dirección y clave de Supabase vienen de Netlify (las mismas que usa
+          // la app) y se pasan al service worker para "posponer" desde la notificación.
+          var u = "%VITE_SUPABASE_URL%", k = "%VITE_SUPABASE_ANON_KEY%";
+          if (u.charAt(0) === "%") u = "";
+          if (k.charAt(0) === "%") k = "";
+          navigator.serviceWorker.register(
+            "/sw.js?u=" + encodeURIComponent(u.trim()) + "&k=" + encodeURIComponent(k.trim())
+          ).catch(() => {
+            /* si falla, seguimos sin PWA offline */
+          });
+        });
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+# Netlify compila la app sola cada vez que hay cambios en GitHub.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Al pulsar el botón "Deploy to Netlify", Netlify pide estos datos.
+# Se sacan de Supabase > Project Settings > API (ver la guía).
+[template.environment]
+  VITE_SUPABASE_URL = "Project URL de tu Supabase (empieza por https:// y acaba en .supabase.co)"
+  VITE_SUPABASE_ANON_KEY = "Clave pública de Supabase: la 'Publishable key' (sb_publishable_...) o la 'anon public'"
