@@ -6,6 +6,8 @@ import { useSupabaseAnotaciones } from "@/hooks/useSupabaseAnotaciones";
 import { useContacts } from "@/hooks/useContacts";
 import { useSupabaseVentas } from "@/hooks/useSupabaseVentas";
 import { Phone, MessageCircle, FileText, Calendar as CalendarIcon, Download, Printer, ExternalLink, Trash2, Pencil, Check, X, Send, Search } from "lucide-react";
+import { FileText as IconoCabecera } from "lucide-react";
+import { CabeceraFormacion } from "@/components/EstiloFormacion";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useRellamar } from "@/hooks/useRellamar";
@@ -531,7 +533,7 @@ ${paginasSeleccionadas}
                         </button>
                         <button
                           onClick={() => handleStartEdit(item)}
-                          className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors text-blue-400 hover:text-blue-600 hover:bg-blue-50"
+                          className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors text-gray-400 hover:text-gray-700 hover:bg-gray-100"
                           title="Editar comentario"
                         >
                           <Pencil size={14} />
@@ -576,7 +578,7 @@ ${paginasSeleccionadas}
                             size="sm"
                             onClick={() => handleSaveEdit(item.id)}
                             disabled={savingEdit}
-                            className="h-7 px-2 bg-blue-600 hover:bg-blue-700"
+                            className="h-7 px-2"
                           >
                             <Check size={14} className="mr-1" /> {savingEdit ? "Guardando..." : "Guardar"}
                           </Button>
@@ -612,11 +614,8 @@ ${paginasSeleccionadas}
       <div className="max-w-4xl mx-auto" ref={reportRef}>
         {/* Header */}
         <div className="mb-6">
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="flex items-center gap-2">
-              <CalendarIcon className="w-6 h-6 text-primary" />
-              <h1 className="text-3xl font-bold">Reporte Diario</h1>
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <CabeceraFormacion icono={IconoCabecera} titulo="Reporte diario" />
             <div className="flex gap-2">
               <Popover open={exportMenuOpen} onOpenChange={setExportMenuOpen}>
                 <PopoverTrigger asChild>
@@ -795,7 +794,7 @@ ${paginasSeleccionadas}
             {grupos.map((g) => {
               const abierto = !!busqueda.trim() || gruposAbiertos.has(g.texto);
               return (
-                <div key={g.texto} className="bg-card border border-indigo-200 rounded-lg">
+                <div key={g.texto} className="bg-card border border-gray-200 rounded-lg">
                   <button
                     onClick={() => setGruposAbiertos((prev) => {
                       const n = new Set(prev);

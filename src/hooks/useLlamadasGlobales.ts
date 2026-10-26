@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { useSupabaseInteractions, SupabaseInteraction } from "./useSupabaseInteractions";
 import { fiscalMonthOf, fiscalMonthBounds } from "@/utils/fiscalMonth";
+import { esContactoReal } from "@/lib/marcas";
 
 export interface Contacto {
   id: string;
@@ -123,8 +124,7 @@ export function useLlamadasGlobales() {
         .filter(
           (c) =>
             Number(c.contactoId) === idNumerico &&
-            c.tipo !== "rellamar" &&
-            c.tipo !== "nota"
+            esContactoReal(c.tipo)
         )
         .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
       const ultimo = contactosReales[0] || null;

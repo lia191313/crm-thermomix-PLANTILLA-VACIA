@@ -38,20 +38,20 @@ $$;
 revoke all on function public.get_due_reminders() from public, anon, authenticated;
 grant execute on function public.get_due_reminders() to service_role;
 
--- 2) Cada minuto, Supabase mira si hay recordatorios y manda el aviso.
+-- 2) Cada 5 minutos, Supabase mira si hay recordatorios y manda el aviso.
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
 
 do $$
 begin
-  if exists (select 1 from cron.job where jobname = 'notify-due-reminders-every-minute') then
-    perform cron.unschedule('notify-due-reminders-every-minute');
+  if exists (select 1 from cron.job where jobname = 'notify-due-reminders-every-5min') then
+    perform cron.unschedule('notify-due-reminders-every-5min');
   end if;
 end $$;
 
 select cron.schedule(
-  'notify-due-reminders-every-minute',
-  '* * * * *',
+  'notify-due-reminders-every-5min',
+  '*/5 * * * *',
   $cron$
     select net.http_post(
       url := 'https://TU_PROJECT_REF.supabase.co/functions/v1/notify-due-reminders',  -- <<< CAMBIAR >>>
@@ -65,7 +65,7 @@ select cron.schedule(
   $cron$
 );
 
--- Comprobación: debe salir una fila con schedule '* * * * *'.
+-- Comprobación: debe salir una fila con schedule '*/5 * * * *'.
 select jobid, jobname, schedule, active
 from cron.job
-where jobname = 'notify-due-reminders-every-minute';
+where jobname = 'notify-due-reminders-every-5min';

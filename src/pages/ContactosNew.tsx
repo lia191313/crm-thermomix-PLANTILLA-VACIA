@@ -3,7 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Edit, Trash2, Phone, MessageCircle, Search, ChevronLeft, ChevronRight, Send, X, CheckSquare, Square, ClipboardPaste, Megaphone } from "lucide-react";
+import { Plus, Edit, Trash2, Phone, MessageCircle, Search, ChevronLeft, ChevronRight, Send, X, CheckSquare, Square, ClipboardPaste, Megaphone, Users } from "lucide-react";
+import { CabeceraFormacion } from "@/components/EstiloFormacion";
+import { ETAPAS_EMBUDO } from "@/lib/embudo";
 import { useContacts } from "@/hooks/useContacts";
 import { useInteractions } from "@/hooks/useInteractions";
 import { useLlamadasGlobales } from "@/hooks/useLlamadasGlobales";
@@ -47,7 +49,8 @@ export default function Contactos({
   const [pasteTexto, setPasteTexto] = useState("");
 
   const ORIGENES = ["Referido", "Vinted", "Wallapop", "Facebook", "Milanuncios", "Clase/Taller", "Listado", "Otro"];
-  const ESTADOS_LEAD = ["Nuevo", "Contactado", "Demo programada", "Venta", "Descartado"];
+  // Los pasos del embudo (lib/embudo.ts) también se pueden filtrar aquí.
+  const ESTADOS_LEAD = ["Nuevo", "Contactado", ...ETAPAS_EMBUDO.map((e) => e.id), "Descartado"];
 
   const CONTACTS_PER_PAGE = 25;
 
@@ -385,12 +388,11 @@ export default function Contactos({
     <div className="space-y-6 p-4 md:p-8">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="font-display text-3xl font-bold text-foreground">Contactos</h1>
-          <p className="text-muted-foreground mt-1">
-            {filteredContacts.length} de {contactosActivos.length} contactos
-          </p>
-        </div>
+        <CabeceraFormacion
+          icono={Users}
+          titulo="Contactos"
+          subtitulo={`${filteredContacts.length} de ${contactosActivos.length} contactos`}
+        />
         <Button
           onClick={() => openDialog()}
           className="w-full md:w-auto bg-primary hover:bg-primary/90 gap-2"
@@ -525,7 +527,7 @@ export default function Contactos({
       </Card>
 
       {/* Barra de selección múltiple / difusión masiva */}
-      <Card className="p-4 space-y-3 bg-blue-50 border-blue-200">
+      <Card className="p-4 space-y-3 bg-gray-50 border-gray-200">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-wrap">
             <button
@@ -564,7 +566,7 @@ export default function Contactos({
           <div className="flex flex-wrap gap-2">
             <Button
               onClick={() => setShowListasDifusion(true)}
-              className="gap-2 bg-blue-600 hover:bg-blue-700"
+              className="gap-2"
               title="Registrar una difusión (clase online o presencial), quitando a quien no toque"
             >
               <Megaphone className="w-4 h-4" />
@@ -594,7 +596,7 @@ export default function Contactos({
         )}
 
         {showPasteSelect && (
-          <div className="bg-white border border-blue-200 rounded-lg p-3 space-y-2">
+          <div className="bg-white border border-gray-200 rounded-lg p-3 space-y-2">
             <label className="text-xs font-medium text-blue-900 block">
               Pega aquí una lista de nombres o teléfonos (uno por línea, o separados por comas). Por ejemplo, copiados de una lista de difusión de WhatsApp.
             </label>
@@ -605,7 +607,7 @@ export default function Contactos({
               className="w-full p-2 border border-input rounded-md text-sm min-h-[100px] outline-none focus:ring-2 focus:ring-blue-500 resize-none bg-background"
             />
             <div className="flex gap-2">
-              <Button onClick={handlePasteSelect} size="sm" className="bg-blue-600 hover:bg-blue-700">
+              <Button onClick={handlePasteSelect} size="sm">
                 Buscar y añadir a la selección
               </Button>
               <Button
@@ -645,7 +647,7 @@ export default function Contactos({
             </TableHeader>
             <TableBody>
               {paginatedContacts.map((contact) => (
-                <TableRow key={contact.id} className={selectedIds.has(contact.id) ? "bg-blue-50/60" : ""}>
+                <TableRow key={contact.id} className={selectedIds.has(contact.id) ? "bg-green-50/60" : ""}>
                   <TableCell>
                     <input
                       type="checkbox"
@@ -724,7 +726,7 @@ export default function Contactos({
       {/* Cards - Mobile */}
       <div className="md:hidden space-y-3">
         {paginatedContacts.map((contact) => (
-          <Card key={contact.id} className={`p-4 ${selectedIds.has(contact.id) ? "bg-blue-50/60 border-blue-300" : ""}`}>
+          <Card key={contact.id} className={`p-4 ${selectedIds.has(contact.id) ? "bg-green-50/60 border-green-300" : ""}`}>
             <div className="space-y-3">
               <div className="flex items-start gap-2">
                 <input
@@ -781,14 +783,14 @@ export default function Contactos({
                 </button>
                 <button
                   onClick={() => onViewContact?.(contact.id)}
-                  className="flex-1 p-2 bg-blue-100 hover:bg-blue-200 rounded transition"
+                  className="flex-1 p-2 bg-green-50 hover:bg-green-100 rounded transition"
                   title="Ver detalles y anotaciones"
                 >
                   <Edit className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => handleDeleteContact(contact.id)}
-                  className="flex-1 p-2 bg-red-100 hover:bg-red-200 rounded transition"
+                  className="flex-1 p-2 bg-gray-100 hover:bg-red-100 rounded transition"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -840,7 +842,7 @@ export default function Contactos({
         <div className="mt-6">
           <button
             onClick={() => setShowSoloSiNecesita(!showSoloSiNecesita)}
-            className="w-full flex items-center justify-between px-4 py-3 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors text-amber-800 font-medium"
+            className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors text-gray-700 font-medium"
           >
             <span>🤝 Solo si me necesita ({contactosSoloSiNecesita.length})</span>
             <span className="text-sm">{showSoloSiNecesita ? "▲ Ocultar" : "▼ Mostrar"}</span>
@@ -965,7 +967,7 @@ export default function Contactos({
               <textarea
                 value={difusionTexto}
                 onChange={(e) => setDifusionTexto(e.target.value)}
-                placeholder="Ej: Invitación a la clase online del miércoles 23/09"
+                placeholder="Ej: Invitación a la clase por Zoom del miércoles 23/09"
                 className="w-full p-3 border border-input rounded-md text-sm min-h-[90px] outline-none focus:ring-2 focus:ring-blue-500 resize-none bg-background"
               />
             </div>
@@ -981,7 +983,7 @@ export default function Contactos({
               <Button
                 onClick={handleRegistrarDifusion}
                 disabled={savingDifusion}
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                className="flex-1"
               >
                 {savingDifusion ? "Guardando..." : `Registrar para ${selectedIds.size}`}
               </Button>

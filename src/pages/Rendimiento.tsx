@@ -2,6 +2,10 @@ import { useMemo, useState, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from "recharts";
 import { TrendingUp, ShoppingBag, Star, Phone, Heart } from "lucide-react";
+import { TrendingUp as IconoCabecera } from "lucide-react";
+import { CabeceraFormacion } from "@/components/EstiloFormacion";
+import CualificacionTeamLeader from "@/components/CualificacionTeamLeader";
+import { esContactoReal, esArchivado } from "@/lib/marcas";
 import { useSupabaseVentas } from "@/hooks/useSupabaseVentas";
 import { useDemos } from "@/hooks/useDemos";
 import { useLlamadasGlobales } from "@/hooks/useLlamadasGlobales";
@@ -67,7 +71,7 @@ export default function Rendimiento() {
       }).length;
       const contactosMes = contactos.filter((c) => {
         const fc = new Date(c.fecha);
-        return fc >= start && fc < endExclusive && (c.tipo === "llamada" || c.tipo === "whatsapp");
+        return fc >= start && fc < endExclusive && esContactoReal(c.tipo);
       }).length;
       const mesShort = fiscalMonthLabel(fm, { short: true });
       return {
@@ -99,12 +103,13 @@ export default function Rendimiento() {
   }, [contacts]);
 
   // Filtrar contactos UNICOS para el mes fiscal actual.
-  // Solo cuentan interacciones reales (llamada o whatsapp), no notas ni rellamar.
+  // Solo cuentan interacciones reales (llamada, WhatsApp o difusión), no notas ni rellamar.
   const contactadosMes = useMemo(() => {
     const fmActual = fiscalMonthOf(new Date());
     const interaccionesMes = contactos.filter(c =>
       isInFiscalMonth(new Date(c.fecha), fmActual) &&
-      (c.tipo === "llamada" || c.tipo === "whatsapp")
+      esContactoReal(c.tipo) &&
+      !esArchivado(contactsMap.get(c.contactoId)?.nombre ?? "") // sin los ⛔, como el Panel de control
     );
 
     // Agrupar por contactoId para obtener solo contactos unicos
@@ -118,17 +123,13 @@ export default function Rendimiento() {
     );
 
     return contactosUnicos;
-  }, [contactos]);
+  }, [contactos, contactsMap]);
 
   return (
     <div className="space-y-6 p-4 md:p-8 max-w-5xl mx-auto">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-          <TrendingUp className="text-primary" size={28} />
-          Mi Rendimiento
-        </h1>
-        <p className="text-muted-foreground mt-1 capitalize">{mesActual}</p>
-      </div>
+      <CabeceraFormacion icono={IconoCabecera} titulo="Mi rendimiento" subtitulo={mesActual} />
+
+      <CualificacionTeamLeader />
 
       {/* KPIs del mes */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">

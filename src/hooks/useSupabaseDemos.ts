@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { moverEnEmbudoTras } from '@/lib/embudoAuto';
 
 export interface Demo {
   id: number;
@@ -47,6 +48,8 @@ export function useSupabaseDemos() {
       if (data) {
         setDemos([...demos, data[0]]);
       }
+      // Con una demo apuntada, la persona pasa sola a "Demo apuntada" en el embudo.
+      await moverEnEmbudoTras(demo.contacto_id, "demo");
     } catch (error) {
       console.error('Error adding demo:', error);
       throw error;

@@ -16,6 +16,8 @@ export interface SupabaseContact {
   recibe_difusion?: boolean;
   origen?: string | null;
   estado_lead?: string | null;
+  /** Ficha de quien le recomendó esta persona (21/10/2026). */
+  recomendada_por?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -61,7 +63,7 @@ export function useSupabaseContacts() {
     try {
       const { data, error } = await supabase
         .from('contacts')
-        .select('id,nombre,telefono,ubicacion,modelo,intereses,notas,zona_playa,sin_contactar,recibe_difusion,origen,estado_lead,created_at,updated_at')
+        .select('id,nombre,telefono,ubicacion,modelo,intereses,notas,zona_playa,sin_contactar,recibe_difusion,origen,estado_lead,recomendada_por,created_at,updated_at')
         .order('created_at', { ascending: false });
 
       if (error) throw error;

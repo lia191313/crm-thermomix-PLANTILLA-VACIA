@@ -113,3 +113,38 @@ export function abrirEnGoogleCalendar(params: GoogleCalendarEventParams): void {
   const url = buildGoogleCalendarUrl(params);
   window.open(url, "_blank", "noopener,noreferrer");
 }
+
+/**
+ * Versión libre para las citas del Calendario (ferias, entregas, reuniones...):
+ * el título, el sitio y las horas los pone ella, no hace falta una clienta.
+ */
+export function abrirCitaEnGoogleCalendar(cita: {
+  titulo: string;
+  inicio: Date;
+  fin?: Date | null;
+  todoElDia?: boolean;
+  lugar?: string | null;
+  notas?: string | null;
+}): void {
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const dia = (d: Date) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+  const hora = (d: Date) => `${dia(d)}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+
+  let dates: string;
+  if (cita.todoElDia) {
+    const siguiente = new Date(cita.inicio);
+    siguiente.setDate(siguiente.getDate() + 1);
+    dates = `${dia(cita.inicio)}/${dia(siguiente)}`;
+  } else {
+    const fin = cita.fin ?? new Date(cita.inicio.getTime() + 60 * 60000);
+    dates = `${hora(cita.inicio)}/${hora(fin)}`;
+  }
+
+  const lines: string[] = [];
+  if (cita.notas) lines.push(cita.notas, "");
+  lines.push("📌 Añadido desde tu app CRM Thermomix");
+
+  const params = new URLSearchParams({ action: "TEMPLATE", text: cita.titulo, dates, details: lines.join("\n") });
+  if (cita.lugar) params.set("location", cita.lugar);
+  window.open(`https://calendar.google.com/calendar/render?${params.toString()}`, "_blank", "noopener,noreferrer");
+}

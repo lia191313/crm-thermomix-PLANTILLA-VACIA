@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { Contact } from "@/hooks/useContacts";
+import { noInvitar, soloOnline } from "@/lib/marcas";
 
 // Las tres listas de difusión de WhatsApp Business, definidas por una regla
 // en vez de copiar a mano los destinatarios cada vez.
@@ -19,9 +20,11 @@ export const LISTAS: { id: ListaDifusion; nombre: string; descripcion: string }[
 const SIN_MODELO = "Sin modelo";
 const modeloDe = (c: Contact) => c.modelo?.trim() || SIN_MODELO;
 
-export function contactosDeLista(contactos: Contact[], lista: ListaDifusion): Contact[] {
-  if (lista === "mi_zona") return contactos.filter((c) => c.zonaPlaya);
-  if (lista === "otra_zona") return contactos.filter((c) => !c.zonaPlaya);
+export function contactosDeLista(todos: Contact[], lista: ListaDifusion): Contact[] {
+  const contactos = todos.filter((c) => !noInvitar(c.nombre)); // 🚫 no recibe invitaciones
+  // 🖥️ solo online: entra en la clase online, pero no en las presenciales.
+  if (lista === "mi_zona") return contactos.filter((c) => c.zonaPlaya && !soloOnline(c.nombre));
+  if (lista === "otra_zona") return contactos.filter((c) => !c.zonaPlaya && !soloOnline(c.nombre));
   return contactos;
 }
 

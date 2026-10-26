@@ -7,9 +7,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  Plus, Edit, Trash2, ChevronLeft, ChevronRight, Search, Phone, UserCheck, UserX, RotateCcw, Pencil, AlertTriangle, ClipboardList, CalendarClock,
+  Plus, Edit, Trash2, ChevronLeft, ChevronRight, Search, Phone, UserCheck, UserX, RotateCcw, Pencil, AlertTriangle, ClipboardList, CalendarClock, Briefcase, Copy,
 } from "lucide-react";
+import { ClipboardList as IconoCabecera } from "lucide-react";
+import { CabeceraFormacion } from "@/components/EstiloFormacion";
+import { BotonPromos } from "@/components/Promociones";
 import { toast } from "sonner";
+import { ZONAS, zonaDe } from "@/lib/zonas";
 import { useSupabaseListados, fetchClientesBasicos, type PersonaListado, type Listado } from "@/hooks/useSupabaseListados";
 import { confirmarLlamada } from "@/lib/callDialog";
 import { useLlamadasGlobales } from "@/hooks/useLlamadasGlobales";
@@ -22,6 +26,15 @@ import {
 const PERSONAS_PER_PAGE = 50;
 const STORAGE_KEY = "thermomix_listado_seleccionado";
 
+/** "HH:MM" de dentro de `min` minutos (redondeado a 5 minutos). */
+function horaDentroDe(min: number): string {
+  const d = new Date(Date.now() + min * 60000);
+  if (min > 0) d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+/** Antes de las 15:00 es mañana; desde las 15:00, tarde. */
+const franjaDeHora = (hora: string): Franja => (hora < "15:00" ? "manana" : "tarde");
+
 type Orden = "poblacion" | "apellidos" | "nombre" | "llamada";
 // "rellamar" = toca volver a llamar hoy (o ya pasó el día); "programadas" = rellamada otro día.
 // "sinllamar" = pendientes a las que todavía no se ha llamado nunca.
@@ -31,13 +44,20 @@ const ESTADO_LABEL: Record<EstadoPersona, string> = {
   pendiente: "Pendiente",
   adoptado: "Adoptado",
   descartado: "Descartado",
+  comercial: "Tiene comercial",
 };
 
 const ESTADO_COLORS: Record<EstadoPersona, string> = {
-  pendiente: "bg-sky-100 text-sky-700",
-  adoptado: "bg-green-100 text-green-700",
-  descartado: "bg-red-100 text-red-500",
+  // Pendiente en verde clarito (le gusta así, 21/10/2026); adoptado en verde fuerte para distinguirlos.
+  pendiente: "bg-green-50 text-green-700",
+  adoptado: "bg-green-600 text-white",
+  descartado: "bg-gray-100 text-gray-400",
+  comercial: "bg-gray-100 text-gray-700",
 };
+
+// Texto de los contadores de arriba ("3 pendientes", "1 tiene comercial"...).
+const contadorEstado = (e: EstadoPersona, n: number) =>
+  e === "comercial" ? `${n} ${n === 1 ? "tiene" : "tienen"} comercial` : `${n} ${ESTADO_LABEL[e].toLowerCase()}s`;
 
 const compararTexto = (a: string, b: string) =>
   (a || "￿").localeCompare(b || "￿", "es", { sensitivity: "base" });
@@ -66,6 +86,7 @@ export default function Listados() {
     const pedido = tomarFiltroInicialListados();
     return pedido === "rellamar" || pedido === "programadas" ? pedido : "pendiente";
   });
+  const [filtroZona, setFiltroZona] = useState("");
   const [filtroPoblacion, setFiltroPoblacion] = useState("");
   const [filtroFranja, setFiltroFranja] = useState<Franja | "">("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -109,7 +130,7 @@ export default function Listados() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [listadoActual?.id, filtroEstado, filtroPoblacion, searchTerm, orden, filtroFranja]);
+  }, [listadoActual?.id, filtroEstado, filtroZona, filtroPoblacion, searchTerm, orden, filtroFranja]);
 
   useEffect(() => {
     setFiltroFranja("");
@@ -124,6 +145,8 @@ export default function Listados() {
   );
 
   const hoy = fechaISO();
+  // Ya llamada hoy: la fila sale en verde para no repetir en la misma sesión.
+  const llamadaHoy = (p: PersonaListado) => !!p.ultima_llamada && fechaISO(new Date(p.ultima_llamada)) === hoy;
 
   // Las que tienen rellamada para otro día no salen en "pendientes" hasta su día.
   const cumpleEstado = (p: PersonaListado) => {
@@ -137,7 +160,7 @@ export default function Listados() {
   };
 
   const contadores = useMemo(() => {
-    const c = { pendiente: 0, adoptado: 0, descartado: 0, rellamar: 0, programadas: 0, rellamarManana: 0, rellamarTarde: 0 };
+    const c = { pendiente: 0, adoptado: 0, descartado: 0, comercial: 0, rellamar: 0, programadas: 0, rellamarManana: 0, rellamarTarde: 0 };
     personasListado.forEach((p) => {
       const r = estadoRellamada(p, hoy);
       if (r === "programada") c.programadas++;
@@ -159,12 +182,21 @@ export default function Listados() {
     return m;
   }, [personas]);
 
+  // Zonas (grupos de poblaciones) con cuántas personas hay en cada una según el estado.
+  const zonas = useMemo(() => {
+    const m = new Map<string, number>();
+    personasListado.filter(cumpleEstado).forEach((p) => m.set(zonaDe(p.poblacion), (m.get(zonaDe(p.poblacion)) ?? 0) + 1));
+    return ZONAS.map((z) => [z, m.get(z) ?? 0] as const);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personasListado, filtroEstado, hoy]);
+
   // Poblaciones del listado (sin distinguir mayúsculas ni acentos) con cuántas
-  // personas hay en cada una según el estado que se está mirando.
+  // personas hay en cada una según el estado que se está mirando (y la zona elegida).
   const poblaciones = useMemo(() => {
     const m = new Map<string, { label: string; count: number }>();
     personasListado
       .filter(cumpleEstado)
+      .filter((p) => !filtroZona || zonaDe(p.poblacion) === filtroZona)
       .forEach((p) => {
         const key = clavePoblacion(p.poblacion);
         const prev = m.get(key);
@@ -172,7 +204,7 @@ export default function Listados() {
       });
     return [...m.entries()].sort((a, b) => compararTexto(a[1].label, b[1].label));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [personasListado, filtroEstado, hoy]);
+  }, [personasListado, filtroEstado, filtroZona, hoy]);
 
   const filtradas = useMemo(() => {
     const term = normalizarNombre(searchTerm);
@@ -182,6 +214,7 @@ export default function Listados() {
       if (!term) {
         if (!cumpleEstado(p)) return false;
         if (filtroFranja && p.franja !== filtroFranja) return false;
+        if (filtroZona && zonaDe(p.poblacion) !== filtroZona) return false;
         if (filtroPoblacion && clavePoblacion(p.poblacion) !== filtroPoblacion) return false;
         return true;
       }
@@ -210,12 +243,15 @@ export default function Listados() {
     // luego las de cualquier hora y al final las de la otra franja.
     const ahora = franjaActual();
     const pesoFranja = (p: PersonaListado) => (p.franja === ahora ? 0 : p.franja ? 2 : 1);
+    // Las que tienen hora concreta van primero, por orden de hora.
+    const claveHora = (p: PersonaListado) => (p.rellamar_hora ? p.rellamar_hora.slice(0, 5) : "99:99");
     const cmpFinal = filtroEstado === "rellamar"
-      ? (a: PersonaListado, b: PersonaListado) => pesoFranja(a) - pesoFranja(b) || cmp(a, b)
+      ? (a: PersonaListado, b: PersonaListado) =>
+          claveHora(a).localeCompare(claveHora(b)) || pesoFranja(a) - pesoFranja(b) || cmp(a, b)
       : cmp;
     return [...lista].sort(cmpFinal);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [personasListado, filtroEstado, filtroPoblacion, filtroFranja, searchTerm, orden, hoy]);
+  }, [personasListado, filtroEstado, filtroZona, filtroPoblacion, filtroFranja, searchTerm, orden, hoy]);
 
   const totalPages = Math.ceil(filtradas.length / PERSONAS_PER_PAGE);
   const paginadas = filtradas.slice((currentPage - 1) * PERSONAS_PER_PAGE, currentPage * PERSONAS_PER_PAGE);
@@ -268,6 +304,37 @@ export default function Listados() {
     cambiarEstado(p, "descartado", "Descartada");
   };
 
+  const handleTieneComercial = async (p: PersonaListado) => {
+    const comercial = prompt(
+      `${nombreCompleto(p)} ya tiene comercial.\n\n¿Cómo se llama su comercial? (si no lo sabes, déjalo en blanco)`
+    );
+    if (comercial === null) return;
+    const nota = `${formatDia(hoy)}: ya tiene comercial${comercial.trim() ? ` (${comercial.trim()})` : ""}`;
+    setBusyId(p.id);
+    try {
+      await actualizarPersona(p.id, { estado: "comercial", notas: p.notas ? `${p.notas}\n${nota}` : nota });
+      toast.success("Pasada a «Tiene comercial»");
+    } catch {
+      toast.error("Error al guardar");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // Datos de las que tienen comercial, para pegarlos en WhatsApp o en un correo.
+  const copiarDatosComercial = async () => {
+    const texto = filtradas
+      .filter((p) => p.estado === "comercial")
+      .map((p) => [nombreCompleto(p), p.telefono, p.poblacion, p.notas?.replace(/\n/g, " · ")].filter(Boolean).join(" — "))
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(texto);
+      toast.success("Datos copiados: pégalos donde quieras");
+    } catch {
+      toast.error("No se pudo copiar");
+    }
+  };
+
   const handleRenombrar = async (l: Listado) => {
     const nombre = prompt("Nuevo nombre del listado:", l.nombre)?.trim();
     if (!nombre || nombre === l.nombre) return;
@@ -308,7 +375,7 @@ export default function Listados() {
 
   const acciones = (p: PersonaListado) => (
     <div className="flex justify-end gap-1">
-      {p.estado !== "descartado" && (
+      {p.estado !== "descartado" && p.estado !== "comercial" && (
         <button onClick={() => handleCall(p)} className="p-2 hover:bg-sky-100 rounded transition" title="Llamar">
           <Phone className="w-4 h-4 text-sky-600" />
         </button>
@@ -331,6 +398,14 @@ export default function Listados() {
             <UserCheck className="w-4 h-4 text-green-600" />
           </button>
           <button
+            onClick={() => handleTieneComercial(p)}
+            disabled={busyId === p.id}
+            className="p-2 hover:bg-purple-100 rounded transition disabled:opacity-40"
+            title="Ya tiene comercial"
+          >
+            <Briefcase className="w-4 h-4 text-purple-600" />
+          </button>
+          <button
             onClick={() => handleDescartar(p)}
             disabled={busyId === p.id}
             className="p-2 hover:bg-red-100 rounded transition disabled:opacity-40"
@@ -340,7 +415,7 @@ export default function Listados() {
           </button>
         </>
       )}
-      {p.estado === "descartado" && (
+      {(p.estado === "descartado" || p.estado === "comercial") && (
         <button
           onClick={() => cambiarEstado(p, "pendiente", "Vuelve a pendientes")}
           disabled={busyId === p.id}
@@ -356,12 +431,31 @@ export default function Listados() {
   const infoLlamadas = (p: PersonaListado) =>
     p.llamadas > 0 ? `${p.llamadas} ${p.llamadas === 1 ? "llamada" : "llamadas"} · ${formatFecha(p.ultima_llamada)}` : "Sin llamar";
 
-  const etiquetaFranja = (p: PersonaListado) =>
-    p.franja && p.estado === "pendiente" ? (
-      <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-700" title="Mejor hora para llamarla">
+  const marcaLlamadaHoy = (p: PersonaListado) =>
+    llamadaHoy(p) ? (
+      <span className="inline-flex px-2 py-0.5 rounded text-xs font-semibold bg-green-600 text-white">✓ Llamada hoy</span>
+    ) : null;
+
+  const etiquetaFranja = (p: PersonaListado) => {
+    if (p.estado !== "pendiente") return null;
+    if (p.rellamar_hora && p.rellamar_el) {
+      const hora = p.rellamar_hora.slice(0, 5);
+      const pasada = p.rellamar_el < fechaISO() || (p.rellamar_el === fechaISO() && hora < horaDentroDe(0));
+      return (
+        <span
+          className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold ${pasada ? "bg-amber-100 text-amber-800" : "bg-gray-100 text-gray-800"}`}
+          title={pasada ? "Ya es la hora de llamarla" : "Hora para volver a llamarla"}
+        >
+          ⏰ {hora}
+        </span>
+      );
+    }
+    return p.franja ? (
+      <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700" title="Mejor hora para llamarla">
         {FRANJA_LABEL[p.franja]}
       </span>
     ) : null;
+  };
 
   const avisoYaEnContactos = (p: PersonaListado) => {
     if (p.estado === "adoptado") return null;
@@ -369,7 +463,7 @@ export default function Listados() {
     if (!c) return null;
     const u = ultimaActividad(interacciones, c.id);
     return (
-      <div className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 whitespace-normal" role="note">
+      <div className="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700 whitespace-normal" role="note">
         <p className="font-semibold">👤 Ya en Contactos: {c.nombre}</p>
         {u && <p>Última vez: {u.cuando} · {u.tipo} · {u.texto}</p>}
         <p>Pulsa adoptar 👤✓ para enlazarla (no se duplica).</p>
@@ -384,7 +478,7 @@ export default function Listados() {
       <span className="inline-flex flex-wrap gap-1">
       <span
         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
-          r === "hoy" ? "bg-amber-100 text-amber-800" : "bg-muted text-muted-foreground"
+          r === "hoy" ? "bg-green-50 text-green-800" : "bg-muted text-muted-foreground"
         }`}
         title="Día para volver a llamar"
       >
@@ -400,14 +494,14 @@ export default function Listados() {
     <div className="space-y-6 p-4 md:p-8">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="font-display text-3xl font-bold text-foreground">Listados</h1>
-          <p className="text-muted-foreground mt-1">Potenciales clientes para llamar. Cada listado va por separado.</p>
+        <CabeceraFormacion icono={IconoCabecera} titulo="Listados" subtitulo="Potenciales clientes para llamar. Cada listado va por separado." />
+        <div className="flex gap-2">
+          <BotonPromos className="flex-1 md:flex-none" />
+          <Button onClick={() => setImportOpen(true)} className="flex-1 md:flex-none bg-primary hover:bg-primary/90 gap-2">
+            <Plus className="w-4 h-4" />
+            Nuevo listado
+          </Button>
         </div>
-        <Button onClick={() => setImportOpen(true)} className="w-full md:w-auto bg-primary hover:bg-primary/90 gap-2">
-          <Plus className="w-4 h-4" />
-          Nuevo listado
-        </Button>
       </div>
 
       {error && (
@@ -442,7 +536,7 @@ export default function Listados() {
               return (
                 <button
                   key={l.id}
-                  onClick={() => { setListadoId(l.id); setFiltroPoblacion(""); }}
+                  onClick={() => { setListadoId(l.id); setFiltroPoblacion(""); setFiltroZona(""); }}
                   className={`px-3 py-2 rounded-lg border text-sm transition ${
                     activo
                       ? "bg-primary text-primary-foreground border-primary shadow"
@@ -477,7 +571,7 @@ export default function Listados() {
                 <button
                   onClick={() => setFiltroEstado("rellamar")}
                   className={`px-3 py-1 rounded-full font-medium inline-flex items-center gap-1 ${
-                    contadores.rellamar > 0 ? "bg-amber-100 text-amber-800" : "bg-muted text-muted-foreground"
+                    contadores.rellamar > 0 ? "bg-green-50 text-green-800" : "bg-muted text-muted-foreground"
                   } ${filtroEstado === "rellamar" ? "ring-2 ring-offset-1 ring-current" : ""}`}
                 >
                   <Phone className="w-3.5 h-3.5" />
@@ -491,13 +585,13 @@ export default function Listados() {
                     {contadores.programadas} para otro día
                   </button>
                 )}
-                {(["pendiente", "adoptado", "descartado"] as EstadoPersona[]).map((e) => (
+                {(["pendiente", "adoptado", "descartado", "comercial"] as EstadoPersona[]).map((e) => (
                   <button
                     key={e}
                     onClick={() => setFiltroEstado(e)}
                     className={`px-3 py-1 rounded-full font-medium ${ESTADO_COLORS[e]} ${filtroEstado === e ? "ring-2 ring-offset-1 ring-current" : ""}`}
                   >
-                    {contadores[e]} {ESTADO_LABEL[e].toLowerCase()}s
+                    {contadorEstado(e, contadores[e])}
                   </button>
                 ))}
               </div>
@@ -513,7 +607,18 @@ export default function Listados() {
                 className="pl-10"
               />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <select
+                value={filtroZona}
+                onChange={(e) => { setFiltroZona(e.target.value); setFiltroPoblacion(""); }}
+                className="px-3 py-2 border border-input rounded-md bg-background text-foreground"
+                aria-label="Zona"
+              >
+                <option value="">Todas las zonas</option>
+                {zonas.map(([z, n]) => (
+                  <option key={z} value={z}>{z} ({n})</option>
+                ))}
+              </select>
               <select
                 value={filtroPoblacion}
                 onChange={(e) => setFiltroPoblacion(e.target.value)}
@@ -541,6 +646,7 @@ export default function Listados() {
                 <option value="programadas">Rellamar otro día</option>
                 <option value="adoptado">Adoptados</option>
                 <option value="descartado">Descartados</option>
+                <option value="comercial">Tienen comercial</option>
                 <option value="todos">Todos</option>
               </select>
               <select
@@ -554,6 +660,14 @@ export default function Listados() {
                 <option value="llamada">Sin llamar primero</option>
               </select>
             </div>
+            {filtroEstado === "comercial" && filtradas.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <Button size="sm" variant="outline" onClick={copiarDatosComercial} className="gap-2">
+                  <Copy className="w-4 h-4" /> Copiar datos ({filtradas.length})
+                </Button>
+                <span className="text-muted-foreground">Nombre, teléfono, población y notas, para pegarlos en WhatsApp o en un correo.</span>
+              </div>
+            )}
             {filtroEstado === "rellamar" && (
               <div className="flex gap-2 flex-wrap text-sm">
                 {([
@@ -593,7 +707,7 @@ export default function Listados() {
                 </TableHeader>
                 <TableBody>
                   {paginadas.map((p) => (
-                    <TableRow key={p.id}>
+                    <TableRow key={p.id} className={llamadaHoy(p) ? "bg-green-100 hover:bg-green-100" : undefined}>
                       <TableCell className="font-medium">{p.poblacion || "—"}</TableCell>
                       <TableCell>{p.nombre}</TableCell>
                       <TableCell>{p.apellidos}</TableCell>
@@ -608,6 +722,7 @@ export default function Listados() {
                         <p className="line-clamp-2 whitespace-pre-line" title={p.notas ?? ""}>{p.notas || "—"}</p>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap space-y-1">
+                        {marcaLlamadaHoy(p)}
                         <p>{infoLlamadas(p)}</p>
                         {avisoRellamar(p)}
                       </TableCell>
@@ -634,7 +749,7 @@ export default function Listados() {
               </Card>
             )}
             {paginadas.map((p) => (
-              <Card key={p.id} className="p-4 space-y-2">
+              <Card key={p.id} className={`p-4 space-y-2 ${llamadaHoy(p) ? "bg-green-100 border-green-400" : ""}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <h3 className="font-bold text-foreground">{nombreCompleto(p)}</h3>
@@ -644,6 +759,7 @@ export default function Listados() {
                     {ESTADO_LABEL[p.estado]}
                   </span>
                 </div>
+                {marcaLlamadaHoy(p)}
                 {avisoYaEnContactos(p)}
                 {avisoRellamar(p)}
                 {p.notas && <p className="text-sm text-muted-foreground whitespace-pre-line line-clamp-3">{p.notas}</p>}
@@ -709,14 +825,14 @@ export default function Listados() {
           const nuevo = await crearListado(nombre, filas);
           setListadoId(nuevo.id);
           setFiltroEstado("pendiente");
-          setFiltroPoblacion("");
+          setFiltroPoblacion(""); setFiltroZona("");
           toast.success(`Listado "${nombre}" creado con ${filas.length} personas`);
         }}
         onAnadir={async (id, filas) => {
           await anadirAListado(id, filas);
           setListadoId(id);
           setFiltroEstado("pendiente");
-          setFiltroPoblacion("");
+          setFiltroPoblacion(""); setFiltroZona("");
           toast.success(`${filas.length} personas añadidas a "${nombreListado(id)}"`);
         }}
         onAnadirNotas={async (cambios) => {
@@ -746,7 +862,7 @@ function EditarPersonaDialog({
   onSave: (updates: Partial<PersonaListado>, notaLlamada?: string) => Promise<void>;
 }) {
   const [form, setForm] = useState({
-    nombre: "", apellidos: "", telefono: "", poblacion: "", notas: "", rellamar: "", franja: "" as Franja | "",
+    nombre: "", apellidos: "", telefono: "", poblacion: "", notas: "", rellamar: "", franja: "" as Franja | "", hora: "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -766,6 +882,8 @@ function EditarPersonaDialog({
       rellamar: trasLlamada ? sumarDias(2) : persona.rellamar_el ?? "",
       // La preferencia de hora se mantiene entre llamadas hasta que se cambie.
       franja: persona.franja ?? "",
+      // La hora concreta es de esa rellamada: tras una nueva llamada se elige otra.
+      hora: trasLlamada ? "" : (persona.rellamar_hora ?? "").slice(0, 5),
     });
   }, [persona, trasLlamada]);
 
@@ -781,8 +899,10 @@ function EditarPersonaDialog({
         telefono: form.telefono.trim(),
         poblacion: form.poblacion.trim(),
         notas: notas || null,
-        rellamar_el: form.rellamar || null,
-        franja: form.franja || null,
+        // Con hora concreta y sin día, es para hoy.
+        rellamar_el: form.rellamar || (form.hora ? fechaISO() : null),
+        franja: form.hora ? franjaDeHora(form.hora) : form.franja || null,
+        rellamar_hora: form.hora || null,
       }, trasLlamada ? notaDeEstaLlamada(persona?.notas ?? "", notas, hoy) : undefined);
     } catch {
       toast.error("Error al guardar");
@@ -793,7 +913,8 @@ function EditarPersonaDialog({
 
   return (
     <Dialog open={!!persona} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
+      {/* Tras llamar, un clic fuera (al volver del teléfono) no la cierra: solo Guardar o Cancelar. */}
+      <DialogContent className="max-w-md" onInteractOutside={(e) => trasLlamada && e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>
             {trasLlamada ? `¿Cómo ha ido con ${persona?.nombre}?` : persona ? nombreCompleto(persona) : ""}
@@ -823,10 +944,11 @@ function EditarPersonaDialog({
               autoFocus
             />
           </div>
-          <div className={trasLlamada ? "rounded-lg border border-yellow-300 bg-yellow-50 p-3" : ""}>
+          <div className={trasLlamada ? "rounded-lg border border-gray-200 bg-gray-50 p-3" : ""}>
             <Label htmlFor="p-rellamar">{trasLlamada ? "📞 ¿Cuándo la vuelves a llamar?" : "Volver a llamar"}</Label>
             <div className="flex flex-wrap gap-2 mt-1">
               {[
+                { label: "Hoy", dias: 0 },
                 { label: "Mañana", dias: 1 },
                 { label: "En 2 días", dias: 2 },
                 { label: "En 1 semana", dias: 7 },
@@ -854,19 +976,19 @@ function EditarPersonaDialog({
                 aria-label="Elegir día para volver a llamar"
               />
               {form.rellamar && (
-                <Button type="button" size="sm" variant="ghost" onClick={() => setForm({ ...form, rellamar: "" })}>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setForm({ ...form, rellamar: "", hora: "" })}>
                   Sin fecha
                 </Button>
               )}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {form.rellamar
-                ? `Saldrá en "Rellamar hoy" el ${formatDia(form.rellamar)}.${trasLlamada ? " Hasta entonces no sale en Pendientes." : ""}`
+              {form.rellamar || form.hora
+                ? `Saldrá en "Rellamar hoy" el ${formatDia(form.rellamar || fechaISO())}${form.hora ? ` a las ${form.hora}` : ""}.${trasLlamada ? " Hasta entonces no sale en Pendientes." : ""}`
                 : "Sin fecha: se queda en pendientes."}
             </p>
           </div>
           <div>
-            <Label>Mejor hora para llamarla</Label>
+            <Label>¿A qué hora?</Label>
             <div className="flex flex-wrap gap-2 mt-1">
               {([
                 ["", "Cualquier hora"],
@@ -877,12 +999,27 @@ function EditarPersonaDialog({
                   key={valor || "cualquiera"}
                   type="button"
                   size="sm"
-                  variant={form.franja === valor ? "default" : "outline"}
-                  onClick={() => setForm({ ...form, franja: valor })}
+                  variant={!form.hora && form.franja === valor ? "default" : "outline"}
+                  onClick={() => setForm({ ...form, franja: valor, hora: "" })}
                 >
                   {texto}
                 </Button>
               ))}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setForm({ ...form, rellamar: fechaISO(), hora: horaDentroDe(60) })}
+              >
+                ⏰ En 1 hora
+              </Button>
+              <Input
+                type="time"
+                value={form.hora}
+                onChange={(e) => setForm({ ...form, hora: e.target.value, rellamar: form.rellamar || fechaISO() })}
+                className={`w-auto h-9 ${form.hora ? "border-primary" : ""}`}
+                aria-label="Hora concreta para volver a llamar"
+              />
             </div>
           </div>
           <details open={!trasLlamada} className="space-y-3">

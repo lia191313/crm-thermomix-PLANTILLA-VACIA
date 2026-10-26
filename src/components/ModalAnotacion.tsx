@@ -91,6 +91,8 @@ export default function ModalAnotacion({
           descripcion: notas,
           fecha: recordatorioFecha,
           completado: false,
+          // Sin tipo, el aviso al móvil (get_due_reminders) no lo enviaría.
+          tipo: "general",
         } as any);
         // Refrescar la caché de useReminders para que aparezca en la página de Recordatorios
         await loadRemindersFromSupabase();

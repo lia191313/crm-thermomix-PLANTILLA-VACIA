@@ -40,14 +40,14 @@ export default function RellamarHoyCard({ onAbrir }: { onAbrir: () => void }) {
   ].filter(Boolean).join(" · ");
 
   return (
-    <Card className="p-4 border-l-4 border-amber-500 bg-amber-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <Card className="p-4 border-l-4 border-l-gray-300 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div className="flex items-center gap-3">
-        <div className="p-2 bg-amber-100 rounded-full text-amber-700"><Phone size={18} /></div>
+        <div className="p-2 bg-gray-100 rounded-full text-gray-600"><Phone size={18} /></div>
         <div>
-          <p className="font-semibold text-amber-900">
+          <p className="font-semibold text-gray-800">
             Hoy tienes {cuenta.total} {cuenta.total === 1 ? "persona" : "personas"} del listado para volver a llamar
           </p>
-          {detalle && <p className="text-sm text-amber-800">{detalle}</p>}
+          {detalle && <p className="text-sm text-gray-600">{detalle}</p>}
         </div>
       </div>
       <Button
@@ -55,7 +55,6 @@ export default function RellamarHoyCard({ onAbrir }: { onAbrir: () => void }) {
           pedirFiltroInicialListados("rellamar");
           onAbrir();
         }}
-        className="bg-amber-600 hover:bg-amber-700 text-white"
       >
         Ver a quién llamar
       </Button>

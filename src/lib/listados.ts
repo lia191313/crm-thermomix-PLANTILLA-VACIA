@@ -1,7 +1,8 @@
 // Utilidades del apartado "Listados": leer el texto pegado y detectar
 // duplicados contra los clientes (contacts) y el resto de listados.
 
-export type EstadoPersona = "pendiente" | "adoptado" | "descartado";
+// "comercial" = ya tiene comercial de Thermomix (20/10/2026): sale de pendientes y se guarda aparte.
+export type EstadoPersona = "pendiente" | "adoptado" | "descartado" | "comercial";
 
 export interface FilaListado {
   nombre: string;
@@ -94,7 +95,7 @@ export interface PersonaBasica {
   estado: EstadoPersona;
 }
 
-export type TipoAviso = "cliente" | "descartada" | "otro_listado" | "repetida" | "nombre_cliente" | "nombre_listado";
+export type TipoAviso = "cliente" | "descartada" | "con_comercial" | "otro_listado" | "repetida" | "nombre_cliente" | "nombre_listado";
 
 export interface Aviso {
   tipo: TipoAviso;
@@ -151,6 +152,8 @@ export function detectarDuplicados(
       for (const p of previas) {
         if (p.estado === "descartado") {
           avisos.push({ tipo: "descartada", texto: `Ya la descartaste (${nombreListado(p.listado_id)})`, grave: true });
+        } else if (p.estado === "comercial") {
+          avisos.push({ tipo: "con_comercial", texto: `Ya tiene comercial (${nombreListado(p.listado_id)})`, grave: true });
         } else if (p.estado === "pendiente") {
           avisos.push({ tipo: "otro_listado", texto: `Ya está en ${nombreListado(p.listado_id)}`, grave: false });
         }

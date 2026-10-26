@@ -18,9 +18,16 @@ export const TABLAS_COPIA = [
   'prioritarios',
   'dashboard_snooze',
   'leads_redes',
+  'equipo',
+  'equipo_notas',
+  'plantillas',
+  'eventos',
   'listados',
   'listado_personas',
   'listado_llamadas', // historial de llamadas de los listados (Reporte Diario)
+  'objetivos',
+  'promociones',
+  'comisiones',
 ] as const;
 
 // Claves de sesión de Supabase: nunca se copian ni se restauran.

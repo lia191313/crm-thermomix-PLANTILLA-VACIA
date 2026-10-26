@@ -2,7 +2,7 @@ import { Toaster } from "sonner";
 import CallDialog from "./components/CallDialog";
 import RecordatoriosPopup from "./components/RecordatoriosPopup";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Sidebar from "./components/Sidebar";
 import MobileNav from "./components/MobileNav";
@@ -12,7 +12,6 @@ import { cargarConReintento, vigilarNuevaVersion } from "./lib/actualizaciones";
 // El resto de pantallas se descargan solo al entrar en ellas: así la app
 // arranca antes (sobre todo en el móvil) en vez de bajarse todo de golpe.
 const ContactosNew = lazy(cargarConReintento(() => import("./pages/ContactosNew")));
-const RecetasSimple = lazy(cargarConReintento(() => import("./pages/RecetasSimple")));
 const HistorialNew = lazy(cargarConReintento(() => import("./pages/HistorialNew")));
 const Plantillas = lazy(cargarConReintento(() => import("./pages/Plantillas")));
 const DetalleContacto = lazy(cargarConReintento(() => import("./pages/DetalleContacto")));
@@ -22,8 +21,13 @@ const HistorialContactos = lazy(cargarConReintento(() => import("./pages/Histori
 const Ventas = lazy(cargarConReintento(() => import("./pages/Ventas")));
 const Rendimiento = lazy(cargarConReintento(() => import("./pages/Rendimiento")));
 const ReporteDiario = lazy(cargarConReintento(() => import("./pages/ReporteDiario")));
-const LeadsRedes = lazy(cargarConReintento(() => import("./pages/LeadsRedes")));
+const Equipo = lazy(cargarConReintento(() => import("./pages/Equipo")));
 const Listados = lazy(cargarConReintento(() => import("./pages/Listados")));
+const Calendario = lazy(cargarConReintento(() => import("./pages/Calendario")));
+const MiDia = lazy(cargarConReintento(() => import("./pages/MiDia")));
+const Embudo = lazy(cargarConReintento(() => import("./pages/Embudo")));
+const Promociones = lazy(cargarConReintento(() => import("./pages/Promociones")));
+const Comisiones = lazy(cargarConReintento(() => import("./pages/Comisiones")));
 import { useSupabaseAuth } from "./hooks/useSupabaseAuth";
 import { loadRemindersFromSupabase } from "./hooks/useReminders";
 import Login from "./pages/Login";
@@ -36,23 +40,30 @@ const VALID_SECTIONS = new Set([
   "contactos",
   "ventas",
   "rendimiento",
-  "recetas",
   "historial",
   "plantillas",
   "recordatorios",
   "planning",
   "historial-contactos",
   "reporte-diario",
-  "leads-redes",
+  "equipo",
   "listados",
+  "calendario",
+  "mi-dia",
+  "embudo",
+  "promociones",
+  "comisiones",
 ]);
+
+// La app se abre en "Mi día" (21/10/2026; antes en el Dashboard).
+const PANTALLA_INICIAL = "mi-dia";
 
 // Sección inicial: si la app se abre con ?section=XXX (típicamente desde
 // una notificación push), arrancamos directamente en esa sección en vez
 // del dashboard. Limpiamos los query params después para no repetir el
 // salto si el usuario refresca.
 function getInitialSectionFromUrl(): string {
-  if (typeof window === "undefined") return "dashboard";
+  if (typeof window === "undefined") return PANTALLA_INICIAL;
   try {
     const params = new URLSearchParams(window.location.search);
     const section = params.get("section");
@@ -64,7 +75,7 @@ function getInitialSectionFromUrl(): string {
   } catch (_e) {
     // Si algo va mal parseando, simplemente caemos al default.
   }
-  return "dashboard";
+  return PANTALLA_INICIAL;
 }
 
 function App() {
@@ -76,6 +87,39 @@ function App() {
   useEffect(() => {
     setError(null);
   }, [activeSection, selectedContactId]);
+
+  // Botón "atrás" (sobre todo el del móvil): cada pantalla y cada ficha se
+  // apuntan en el historial del navegador, así "atrás" vuelve a la anterior
+  // en vez de cerrar la app.
+  const navegar = useCallback((section: string) => {
+    setSelectedContactId(null);
+    setActiveSection(section);
+    window.history.pushState({ section, contactId: null }, "");
+  }, []);
+
+  const verContacto = useCallback((contactId: number) => {
+    setSelectedContactId(contactId);
+    window.history.pushState({ section: window.history.state?.section ?? PANTALLA_INICIAL, contactId }, "");
+  }, []);
+
+  const cerrarContacto = useCallback(() => {
+    // Si la ficha se abrió con verContacto, volver es lo mismo que "atrás".
+    if (window.history.state?.contactId != null) window.history.back();
+    else setSelectedContactId(null);
+  }, []);
+
+  useEffect(() => {
+    window.history.replaceState({ section: activeSection, contactId: null }, "");
+    const alVolverAtras = (event: PopStateEvent) => {
+      const estado = event.state as { section?: string; contactId?: number | null } | null;
+      setActiveSection(estado?.section && VALID_SECTIONS.has(estado.section) ? estado.section : PANTALLA_INICIAL);
+      setSelectedContactId(estado?.contactId ?? null);
+    };
+    window.addEventListener("popstate", alVolverAtras);
+    return () => window.removeEventListener("popstate", alVolverAtras);
+    // Solo al arrancar: la primera entrada del historial es la pantalla inicial.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Avisar si se publica una versión nueva mientras la app está abierta.
   useEffect(() => {
@@ -95,8 +139,7 @@ function App() {
         if (typeof data.section === "string" && VALID_SECTIONS.has(data.section)) {
           // Si estábamos viendo el detalle de un contacto, lo cerramos para
           // que se vea la nueva sección.
-          setSelectedContactId(null);
-          setActiveSection(data.section);
+          navegar(data.section);
         }
         return;
       }
@@ -133,7 +176,7 @@ function App() {
   }
 
   if (!user) {
-    return <Login onLoginSuccess={() => setActiveSection("dashboard")} />;
+    return <Login onLoginSuccess={() => setActiveSection(PANTALLA_INICIAL)} />;
   }
 
   const renderContent = () => {
@@ -141,40 +184,48 @@ function App() {
       return (
         <DetalleContacto
           contactId={selectedContactId}
-          onBack={() => setSelectedContactId(null)}
+          onBack={cerrarContacto}
         />
       );
     }
 
     switch (activeSection) {
       case "dashboard":
-        return <DashboardNew onViewContact={setSelectedContactId} onNavigate={setActiveSection} />;
+        return <DashboardNew onViewContact={verContacto} onNavigate={navegar} />;
       case "contactos":
-        return <ContactosNew onViewContact={setSelectedContactId} />;
+        return <ContactosNew onViewContact={verContacto} />;
       case "ventas":
         return <Ventas />;
       case "rendimiento":
         return <Rendimiento />;
-      case "recetas":
-        return <RecetasSimple />;
       case "historial":
         return <HistorialNew />;
       case "plantillas":
         return <Plantillas />;
       case "recordatorios":
-        return <Recordatorios onViewContact={setSelectedContactId} />;
+        return <Recordatorios onViewContact={verContacto} />;
       case "planning":
-        return <PlanningMensual onViewContact={setSelectedContactId} />;
+        return <PlanningMensual onViewContact={verContacto} />;
       case "historial-contactos":
         return <HistorialContactos />;
       case "reporte-diario":
-        return <ReporteDiario onViewContact={setSelectedContactId} />;
-      case "leads-redes":
-        return <LeadsRedes />;
+        return <ReporteDiario onViewContact={verContacto} />;
+      case "equipo":
+        return <Equipo />;
       case "listados":
         return <Listados />;
+      case "mi-dia":
+        return <MiDia onViewContact={verContacto} onNavigate={navegar} />;
+      case "embudo":
+        return <Embudo onViewContact={verContacto} />;
+      case "promociones":
+        return <Promociones />;
+      case "comisiones":
+        return <Comisiones />;
+      case "calendario":
+        return <Calendario onViewContact={verContacto} />;
       default:
-        return <DashboardNew onViewContact={setSelectedContactId} onNavigate={setActiveSection} />;
+        return <DashboardNew onViewContact={verContacto} onNavigate={navegar} />;
     }
   };
 
@@ -183,11 +234,11 @@ function App() {
       <TooltipProvider>
         <Toaster position="top-center" richColors />
         <CallDialog />
-        {user && <RecordatoriosPopup onVerTodos={() => setActiveSection("recordatorios")} />}
+        {user && <RecordatoriosPopup onVerTodos={() => navegar("recordatorios")} />}
         <div className="flex flex-col md:flex-row h-screen bg-background overflow-hidden">
           {selectedContactId === null && (
             <div className="hidden md:block w-64 border-r border-sidebar-border h-screen sticky top-0">
-              <Sidebar activeSection={activeSection} onNavigate={setActiveSection} />
+              <Sidebar activeSection={activeSection} onNavigate={navegar} onSignOut={signOut} />
             </div>
           )}
           <main className="flex-1 overflow-y-auto w-full pb-20 md:pb-0">
@@ -203,16 +254,7 @@ function App() {
           </main>
         </div>
         {selectedContactId === null && (
-          <MobileNav activeSection={activeSection} onNavigate={setActiveSection} />
-        )}
-        {user && (
-          <button
-            onClick={() => signOut()}
-            className="fixed bottom-4 right-4 p-2 text-xs bg-destructive text-destructive-foreground rounded opacity-50 hover:opacity-100 transition-opacity hidden md:block z-50"
-            title="Cerrar sesión"
-          >
-            Salir
-          </button>
+          <MobileNav activeSection={activeSection} onNavigate={navegar} />
         )}
       </TooltipProvider>
     </ThemeProvider>

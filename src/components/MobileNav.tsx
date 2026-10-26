@@ -1,27 +1,26 @@
-import { BarChart3, Users, Utensils, Clock, History, MessageSquare, Calendar, Download, Upload, Menu, ShoppingBag, TrendingUp, FileText, ClipboardList } from "lucide-react";
+import { Download, Menu, X } from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
-import { exportarCopiaCompleta, restaurarDatosLocales } from "@/lib/backup";
+import { exportarCopiaCompleta } from "@/lib/backup";
+import { GRUPOS_MENU, BARRA_MOVIL, ITEMS_MENU } from "./menuApp";
 
 interface MobileNavProps {
   activeSection: string;
   onNavigate: (section: string) => void;
 }
 
+// Móvil (21/10/2026): 4 botones fijos abajo y "Más", que abre todo el menú
+// agrupado por temas (components/menuApp.ts) y la copia de seguridad.
 export default function MobileNav({ activeSection, onNavigate }: MobileNavProps) {
-  const [showSyncMenu, setShowSyncMenu] = useState(false);
+  const [verMas, setVerMas] = useState(false);
 
-  const navItems = [
-    { id: "dashboard", label: "Inicio", icon: BarChart3 },
-    { id: "reporte-diario", label: "Reporte", icon: FileText },
-    { id: "ventas", label: "Ventas", icon: ShoppingBag },
-    { id: "rendimiento", label: "Métricas", icon: TrendingUp },
-    { id: "planning", label: "Planning", icon: Calendar },
-    { id: "contactos", label: "Contactos", icon: Users },
-    { id: "listados", label: "Listados", icon: ClipboardList },
-    { id: "recordatorios", label: "Recordat.", icon: Clock },
-    { id: "plantillas", label: "Plantillas", icon: MessageSquare },
-  ];
+  const fijos = BARRA_MOVIL.map((id) => ITEMS_MENU.find((i) => i.id === id)!).filter(Boolean);
+  const activoEnMas = !BARRA_MOVIL.includes(activeSection);
+
+  const ir = (id: string) => {
+    setVerMas(false);
+    onNavigate(id);
+  };
 
   const handleExport = async () => {
     const aviso = toast.loading("Preparando la copia completa...");
@@ -33,7 +32,7 @@ export default function MobileNav({ activeSection, onNavigate }: MobileNavProps)
       } else {
         toast.success(`Copia completa descargada: ${r.clientes} clientes y ${r.totalFilas} registros en total`);
       }
-      setShowSyncMenu(false);
+      setVerMas(false);
     } catch (error) {
       toast.dismiss(aviso);
       console.error("Error en exportación:", error);
@@ -41,94 +40,85 @@ export default function MobileNav({ activeSection, onNavigate }: MobileNavProps)
     }
   };
 
-  // Restaura solo lo que se guarda en ESTE aparato (recetas y anotaciones
-  // personalizadas...). Los clientes, ventas, listados, etc. están en la nube.
-  const handleImport = () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".json";
-    input.onchange = (e: Event) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const n = restaurarDatosLocales(JSON.parse(String(event.target?.result ?? "")));
-          toast.success(`Restaurados ${n} datos de este aparato (recetas, anotaciones...). Recargando...`);
-      setShowSyncMenu(false);
-          setTimeout(() => window.location.reload(), 1500);
-        } catch {
-          toast.error("Error al importar el archivo. Asegúrate de que sea una copia de la app.");
-        }
-      };
-      reader.readAsText(file);
-    };
-    input.click();
-  };
-
   return (
     <>
-      {/* Menú de Sincronización (Desplegable en la parte superior) */}
-      {showSyncMenu && (
-        <div className="md:hidden fixed top-0 left-0 right-0 bg-sidebar border-b border-sidebar-border z-40 p-3 space-y-2">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-bold text-sidebar-foreground">Sincronización</span>
-            <button onClick={() => setShowSyncMenu(false)} className="text-sidebar-foreground">✕</button>
+      {/* "Más": todo el menú, por temas */}
+      {verMas && (
+        <div className="md:hidden fixed inset-0 z-40 bg-black/30" onClick={() => setVerMas(false)}>
+          <div
+            className="absolute bottom-16 left-0 right-0 max-h-[75vh] overflow-y-auto rounded-t-2xl bg-sidebar border-t border-sidebar-border p-4 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center">
+              <span className="font-display font-medium uppercase tracking-wide text-sidebar-foreground">Menú</span>
+              <button onClick={() => setVerMas(false)} className="text-sidebar-foreground p-1" title="Cerrar">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {GRUPOS_MENU.map((grupo) => (
+              <div key={grupo.titulo} className="space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">{grupo.titulo}</p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {grupo.items.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeSection === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => ir(item.id)}
+                        className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-left ${
+                          isActive ? "bg-primary text-primary-foreground" : "bg-background text-sidebar-foreground"
+                        }`}
+                      >
+                        <Icon className="w-4 h-4 shrink-0" />
+                        <span className="font-medium">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <button
+              onClick={handleExport}
+              className="w-full flex items-center gap-2 p-2.5 rounded-lg border border-sidebar-border text-sidebar-foreground text-sm"
+            >
+              <Download className="w-4 h-4" />
+              <span className="font-medium">Descargar copia completa</span>
+            </button>
           </div>
-          <button
-            onClick={handleExport}
-            className="w-full flex items-center gap-2 p-2 rounded-lg border border-sidebar-border hover:bg-sidebar-accent/10 text-sidebar-foreground transition-all"
-          >
-            <Download className="w-4 h-4" />
-            <span className="text-sm font-medium">Descargar copia completa</span>
-          </button>
-          <button
-            onClick={handleImport}
-            className="w-full flex items-center gap-2 p-2 rounded-lg border border-sidebar-border hover:bg-sidebar-accent/10 text-sidebar-foreground transition-all"
-          >
-            <Upload className="w-4 h-4" />
-            <span className="text-sm font-medium">Restaurar recetas y anotaciones</span>
-          </button>
         </div>
       )}
 
       {/* Barra de navegación inferior */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-sidebar border-t border-sidebar-border z-50">
-        <div className="flex justify-around items-center h-16 overflow-x-auto">
-          {navItems.map((item) => {
+        <div className="grid grid-cols-5 h-16">
+          {fijos.map((item) => {
             const Icon = item.icon;
-            const isActive = activeSection === item.id;
+            const isActive = activeSection === item.id && !verMas;
             return (
               <button
                 key={item.id}
-                onClick={() => onNavigate(item.id)}
-                className={`flex flex-col items-center justify-center flex-shrink-0 w-16 h-full gap-1 transition-colors ${
-                  isActive
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:text-foreground"
+                onClick={() => ir(item.id)}
+                className={`flex flex-col items-center justify-center gap-1 transition-colors ${
+                  isActive ? "bg-primary/10 text-primary" : "text-muted-foreground"
                 }`}
-                title={item.label}
               >
                 <Icon className="w-5 h-5" />
-                <span className="text-[9px] font-medium text-center">{item.label}</span>
+                <span className="text-[10px] font-medium">{item.corto ?? item.label}</span>
               </button>
             );
           })}
-
-          {/* Botón de Sincronización */}
           <button
-            onClick={() => setShowSyncMenu(!showSyncMenu)}
-            className="flex flex-col items-center justify-center flex-shrink-0 w-16 h-full gap-1 text-muted-foreground hover:text-foreground transition-colors"
-            title="Sincronización"
+            onClick={() => setVerMas(!verMas)}
+            className={`flex flex-col items-center justify-center gap-1 transition-colors ${
+              verMas || activoEnMas ? "bg-primary/10 text-primary" : "text-muted-foreground"
+            }`}
           >
-            <Menu className="w-5 h-5 text-orange-500" />
-            <span className="text-[9px] font-medium">Sincro</span>
+            <Menu className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Más</span>
           </button>
         </div>
       </nav>
-
-      {/* Espaciador para que el contenido no se oculte bajo la barra */}
-      {showSyncMenu && <div className="md:hidden h-24" />}
     </>
   );
 }

@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Phone, MessageCircle, ArrowLeft, Plus, Trash2, Edit2, CheckCircle, X, Clock, CalendarDays, Award, ShoppingBag, Users, CalendarPlus } from "lucide-react";
+import { Phone, MessageCircle, ArrowLeft, Plus, Trash2, Edit2, CheckCircle, X, Clock, CalendarDays, Award, ShoppingBag, CalendarPlus, User, BarChart3, FileText } from "lucide-react";
 import { type Contact } from "@/data/contacts";
 import { isZonaPlaya } from "@/utils/zonaPlaya";
 import { abrirEnGoogleCalendar, type TipoEvento } from "@/utils/googleCalendar";
@@ -13,13 +13,18 @@ import { useContacts } from "@/hooks/useContacts";
 import { useContactNotes } from "@/hooks/useContactNotes";
 import { useReminders } from "@/hooks/useReminders";
 import { useSupabaseDemos } from "@/hooks/useSupabaseDemos";
+import { useSupabaseVentas } from "@/hooks/useSupabaseVentas";
+import { useDemos } from "@/hooks/useDemos";
+import { diasSinContactoDe } from "@/lib/proximosClientes";
+import { TMX, TituloSeccion, Recuadro } from "@/components/EstiloFormacion";
+import { ETAPAS_VENTA, ETAPA_QUIERE_ENTRAR, FUERA_DEL_EMBUDO, enEmbudo } from "@/lib/embudo";
+import RecomendadaPor from "@/components/RecomendadaPor";
 import { toast } from "sonner";
 import { confirmarLlamada } from "@/lib/callDialog";
 import ContactDialog from "@/components/ContactDialog";
 import TemplateSelector from "@/components/TemplateSelector";
 import ModalDemo from "@/components/ModalDemo";
-import { useGrupos } from "@/hooks/useGrupos";
-import { usePrioritarios } from "@/hooks/usePrioritarios";
+import HistorialFicha from "@/components/HistorialFicha";
 
 interface DetalleContactoProps {
   contactId: number;
@@ -34,6 +39,13 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
   const { notes, addNote, deleteNote, updateNote } = useContactNotes(contactId);
   const { reminders, addReminder, deleteReminder } = useReminders();
   const { getDemosPorContacto } = useSupabaseDemos();
+  const { ventas } = useSupabaseVentas();
+  const { demos } = useDemos();
+  const comprasContacto = ventas
+    .filter((v) => Number(v.contacto_id) === contactId)
+    .sort((a, b) => b.fecha_venta.localeCompare(a.fecha_venta));
+  const fechaCorta = (f: string) =>
+    new Date(f.slice(0, 10) + "T00:00:00").toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" });
   // Histórico de demos de este contacto, ordenado por fecha descendente.
   // Parseamos el prefijo [Resultado] que ModalDemo guarda dentro de notas para
   // mostrarlo como etiqueta separada y dejar las notas limpias.
@@ -76,9 +88,6 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
   const [reminderNotes, setReminderNotes] = useState("");
   const contactReminder = reminders.find((r) => r.contactId === contactId);
   const [showModalDemo, setShowModalDemo] = useState(false);
-  const { getGruposContacto, grupos, toggleGrupoContacto } = useGrupos();
-  const { esPrioritario, togglePrioritario } = usePrioritarios();
-  const gruposContacto = getGruposContacto(contactId);
   const [editingZona, setEditingZona] = useState(false);
   const [selectedZona, setSelectedZona] = useState<boolean>(contact?.zonaPlaya ?? false);
 
@@ -99,7 +108,8 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
     );
   }
 
-  const diasSinContacto = contact ? getDiasDesdeUltimoContacto(contact.id) : 999;
+  // Igual que en la Agenda y en "Mi día": cuentan también ventas, bienvenidas y demos.
+  const diasSinContacto = contact ? diasSinContactoDe(contact, { ventas, demos, getDiasDesdeUltimoContacto }) : 999;
   const estadoContacto = () => {
     if (diasSinContacto === 0) return "Contactado hoy";
     if (diasSinContacto <= 7) return "Contactado esta semana";
@@ -313,8 +323,8 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
         onSendViaWhatsApp={handleSendTemplateViaWhatsApp}
       />
 
-      {/* Header */}
-      <div className="flex items-center gap-4">
+      {/* Header: en el móvil el nombre va debajo de los botones */}
+      <div className="flex flex-wrap items-center gap-3 sm:gap-4">
         <Button
           onClick={onBack}
           variant="outline"
@@ -324,15 +334,20 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
           <ArrowLeft className="w-4 h-4" />
           Volver
         </Button>
-        <div className="flex-1">
-          <h1 className="font-display text-3xl font-bold text-foreground">{contact.nombre}</h1>
-          <p className="text-muted-foreground mt-1">{contact.ubicacion}</p>
+        <div className="order-last basis-full sm:order-none sm:basis-0 sm:flex-1 flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex h-12 w-12 shrink-0 rounded-full items-center justify-center text-white text-lg font-display font-medium" style={{ backgroundColor: TMX.naranja }}>
+            {contact.nombre.replace(/[^\p{L}]/gu, "").charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <h1 className="font-display text-2xl sm:text-3xl font-medium text-gray-700">{contact.nombre}</h1>
+            <p className="font-medium mt-1" style={{ color: TMX.verde }}>{contact.ubicacion}</p>
+          </div>
         </div>
         <Button
           onClick={() => setShowEditDialog(true)}
           variant="outline"
           size="sm"
-          className="gap-2 border-blue-200 text-blue-700 hover:bg-blue-50"
+          className="gap-2 ml-auto sm:ml-0 border-gray-300 text-gray-700 hover:bg-gray-50"
         >
           <Edit2 className="w-4 h-4" />
           Editar Contacto
@@ -342,8 +357,8 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
       <div className="grid md:grid-cols-3 gap-6">
         {/* Información del Contacto */}
         <div className="md:col-span-1 space-y-4">
-          <Card className="p-6">
-            <h2 className="font-display font-bold text-lg mb-4 text-foreground">Información</h2>
+          <Recuadro color={TMX.verde} className="!p-6">
+            <TituloSeccion color={TMX.verde} icono={User} className="mb-4">Información</TituloSeccion>
 
             <div className="space-y-3">
               <div>
@@ -377,6 +392,47 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
                 <p className="text-sm text-foreground mt-1">{contact.notas}</p>
               </div>
 
+              {/* Embudo: en qué paso está (lib/embudo.ts) */}
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Embudo</p>
+                <select
+                  value={enEmbudo(contact.estado_lead) ? contact.estado_lead ?? "" : ""}
+                  onChange={async (e) => {
+                    try {
+                      await updateContactInDB({ ...contact, estado_lead: e.target.value || FUERA_DEL_EMBUDO });
+                      toast.success(e.target.value ? "Paso del embudo guardado ✓" : "Fuera del embudo");
+                    } catch {
+                      toast.error("No se pudo guardar el embudo");
+                    }
+                  }}
+                  className="w-full px-2 py-1.5 border border-input rounded-md bg-background text-sm"
+                >
+                  <option value="">— No está en el embudo —</option>
+                  <optgroup label="Ventas">
+                    {ETAPAS_VENTA.map((etapa) => (
+                      <option key={etapa.id} value={etapa.id}>{etapa.emoji} {etapa.label}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Reclutas">
+                    <option value={ETAPA_QUIERE_ENTRAR.id}>{ETAPA_QUIERE_ENTRAR.emoji} {ETAPA_QUIERE_ENTRAR.label} (ganarse la máquina)</option>
+                  </optgroup>
+                </select>
+              </div>
+
+              {/* Quién la recomendó y a quién ha recomendado */}
+              <RecomendadaPor
+                contact={contact}
+                contacts={contacts}
+                onGuardar={async (id) => {
+                  try {
+                    await updateContactInDB({ ...contact, recomendada_por: id });
+                    toast.success(id ? "Recomendación apuntada ✓" : "Recomendación quitada");
+                  } catch {
+                    toast.error("No se pudo guardar la recomendación");
+                  }
+                }}
+              />
+
               {/* Mi zona - Editable */}
               <div>
                 <p className="text-xs text-muted-foreground mb-2">Zona</p>
@@ -389,7 +445,7 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
                           await updateContactInDB(updatedContact);
                           setSelectedZona(true);
                           setEditingZona(false);
-                          toast.success("Zona actualizada: Mi zona ✓");
+                          toast.success("Zona actualizada a Playa ✓");
                         } catch (e) {
                           toast.error("Error al guardar la zona");
                         }
@@ -405,7 +461,7 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
                           await updateContactInDB(updatedContact);
                           setSelectedZona(false);
                           setEditingZona(false);
-                          toast.success("Zona actualizada: Otra zona ✓");
+                          toast.success("Zona actualizada a Barcelona/Interior ✓");
                         } catch (e) {
                           toast.error("Error al guardar la zona");
                         }
@@ -431,31 +487,11 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
               </div>
             </div>
 
-            {/* Grupos / Población */}
-            <div>
-              <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1"><Users className="w-3 h-3" /> Grupos</p>
-              <div className="flex flex-wrap gap-1">
-                {grupos.map((g) => (
-                  <button
-                    key={g}
-                    onClick={() => toggleGrupoContacto(contactId, g)}
-                    className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
-                      gruposContacto.includes(g)
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-background text-muted-foreground border-input hover:bg-accent"
-                    }`}
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* Action Buttons */}
             <div className="flex flex-col gap-2 mt-6">
               <Button
                 onClick={handleMarkAsContacted}
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white gap-2"
+                className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 gap-2"
                 size="sm"
               >
                 <CheckCircle className="w-4 h-4" />
@@ -472,7 +508,7 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
                 </Button>
                 <Button
                   onClick={handleWhatsApp}
-                  className="flex-1 bg-green-600 hover:bg-green-700 text-white gap-2"
+                  className="flex-1 bg-white border border-green-300 hover:bg-green-50 text-green-700 gap-2"
                   size="sm"
                 >
                   <MessageCircle className="w-4 h-4" />
@@ -484,8 +520,8 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
                 onClick={handleRellamar}
                 className={`w-full gap-2 font-bold ${
                   esRellamar(contactId)
-                    ? "bg-gray-300 hover:bg-gray-400 text-gray-700"
-                    : "bg-yellow-400 hover:bg-yellow-500 text-yellow-900"
+                    ? "bg-gray-200 hover:bg-gray-300 text-gray-700"
+                    : "bg-white border border-gray-300 hover:bg-gray-50 text-gray-700"
                 }`}
                 size="sm"
               >
@@ -494,7 +530,7 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
 
               <Button
                 onClick={() => setShowTemplateSelector(true)}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2"
+                className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 gap-2"
                 size="sm"
               >
                 <MessageCircle className="w-4 h-4" />
@@ -502,30 +538,38 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
               </Button>
               <Button
                 onClick={() => setShowModalDemo(true)}
-                className="w-full bg-purple-600 hover:bg-purple-700 text-white gap-2"
+                className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 gap-2"
                 size="sm"
               >
                 <Award className="w-4 h-4" />
                 Registrar Demo
               </Button>
-              <Button
-                onClick={() => togglePrioritario(contactId)}
-                className={`w-full gap-2 text-sm ${
-                  esPrioritario(contactId)
-                    ? "bg-amber-400 hover:bg-amber-500 text-amber-900 font-bold"
-                    : "bg-background border border-input text-foreground hover:bg-accent"
-                }`}
-                variant="outline"
-                size="sm"
-              >
-                {esPrioritario(contactId) ? "⭐ Prioritario (quitar)" : "☆ Marcar como prioritario"}
-              </Button>
             </div>
-          </Card>
+          </Recuadro>
+
+          {/* Compras (tabla ventas) */}
+          {comprasContacto.length > 0 && (
+            <Recuadro color={TMX.naranja} className="!p-6">
+              <TituloSeccion color={TMX.naranja} icono={ShoppingBag} className="mb-3">Compras</TituloSeccion>
+              <div className="space-y-3">
+                {comprasContacto.map((v) => (
+                  <div key={v.id} className="text-sm">
+                    <p className="font-semibold">{v.modelo} · {fechaCorta(v.fecha_venta)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {v.bienvenida_realizada
+                        ? `Bienvenida hecha${v.fecha_bienvenida ? ` el ${fechaCorta(v.fecha_bienvenida)}` : ""}`
+                        : v.fecha_bienvenida ? `Bienvenida el ${fechaCorta(v.fecha_bienvenida)}` : "Bienvenida pendiente"}
+                    </p>
+                    {v.notas && <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">{v.notas}</p>}
+                  </div>
+                ))}
+              </div>
+            </Recuadro>
+          )}
 
           {/* Estadísticas */}
-          <Card className="p-6">
-            <h3 className="font-display font-bold text-sm mb-4 text-foreground">Estadísticas</h3>
+          <Recuadro color={TMX.azul} className="!p-6">
+            <TituloSeccion color={TMX.azul} icono={BarChart3} className="mb-4">Estadísticas</TituloSeccion>
             <div className="space-y-2 mb-4">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-muted-foreground">Días sin contacto</span>
@@ -550,17 +594,17 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
                 <span className="font-bold text-green-600">{notes.filter((n) => n.type === "whatsapp").length}</span>
               </div>
             </div>
-          </Card>
+          </Recuadro>
 
           {/* Histórico de demos */}
           {demosContacto.length > 0 && (
-            <Card className="p-6 border-purple-200 bg-purple-50/30">
+            <Card className="p-6 bg-white">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-display font-bold text-sm text-foreground flex items-center gap-2">
                   <Award className="w-4 h-4 text-purple-600" />
                   Histórico de demos
                 </h3>
-                <span className="px-2 py-1 bg-purple-600 text-white text-xs rounded-full">
+                <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full">
                   {demosContacto.length}
                 </span>
               </div>
@@ -768,15 +812,12 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
         {/* Anotaciones */}
         <div className="md:col-span-2 space-y-4">
           {/* Programar recordatorio - acceso rápido sin scroll (movido desde la Card de Información) */}
-          <Card className="p-6 border-primary/20 bg-primary/5">
-            <h2 className="font-display font-bold text-lg mb-4 text-foreground flex items-center gap-2">
-              <CalendarDays className="w-5 h-5 text-primary" />
-              Programar recordatorio
-            </h2>
+          <Recuadro color={TMX.naranja} className="!p-6">
+            <TituloSeccion color={TMX.naranja} icono={CalendarDays} className="mb-4">Programar recordatorio</TituloSeccion>
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
               <Button
                 onClick={() => handleScheduleReminder("demo")}
-                className="w-full bg-purple-600 hover:bg-purple-700 text-white gap-2"
+                className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 gap-2"
                 size="sm"
               >
                 <CalendarDays className="w-4 h-4" />
@@ -784,7 +825,7 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
               </Button>
               <Button
                 onClick={() => handleScheduleReminder("bienvenida")}
-                className="w-full bg-orange-600 hover:bg-orange-700 text-white gap-2"
+                className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 gap-2"
                 size="sm"
               >
                 <CalendarDays className="w-4 h-4" />
@@ -792,7 +833,7 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
               </Button>
               <Button
                 onClick={() => handleScheduleReminder("clase")}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2"
+                className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 gap-2"
                 size="sm"
               >
                 <CalendarDays className="w-4 h-4" />
@@ -800,7 +841,7 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
               </Button>
               <Button
                 onClick={() => handleScheduleReminder("reparacion")}
-                className="w-full bg-red-600 hover:bg-red-700 text-white gap-2"
+                className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 gap-2"
                 size="sm"
               >
                 <CalendarDays className="w-4 h-4" />
@@ -808,7 +849,7 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
               </Button>
               <Button
                 onClick={() => handleScheduleReminder("seguimiento")}
-                className="w-full bg-green-600 hover:bg-green-700 text-white gap-2"
+                className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 gap-2"
                 size="sm"
               >
                 <CalendarDays className="w-4 h-4" />
@@ -816,7 +857,7 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
               </Button>
               <Button
                 onClick={() => handleScheduleReminder("promocion")}
-                className="w-full bg-yellow-600 hover:bg-yellow-700 text-white gap-2"
+                className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 gap-2"
                 size="sm"
               >
                 <CalendarDays className="w-4 h-4" />
@@ -824,17 +865,19 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
               </Button>
               <Button
                 onClick={() => handleScheduleReminder("otro")}
-                className="w-full bg-gray-600 hover:bg-gray-700 text-white gap-2"
+                className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 gap-2"
                 size="sm"
               >
                 <CalendarDays className="w-4 h-4" />
                 Otro
               </Button>
             </div>
-          </Card>
+          </Recuadro>
 
-          <Card className="p-6">
-            <h2 className="font-display font-bold text-lg mb-4 text-foreground">Anotaciones</h2>
+          <HistorialFicha contactId={contactId} />
+
+          <Recuadro color={TMX.azul} className="!p-6">
+            <TituloSeccion color={TMX.azul} icono={FileText} className="mb-4">Anotaciones</TituloSeccion>
 
             {/* Agregar Nueva Nota */}
             <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
@@ -960,7 +1003,7 @@ export default function DetalleContacto({ contactId, onBack }: DetalleContactoPr
                 ))
               )}
             </div>
-          </Card>
+          </Recuadro>
         </div>
       </div>
       {showModalDemo && (

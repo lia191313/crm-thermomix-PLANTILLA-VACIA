@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Phone, MessageCircle, Send, Trash2, Calendar, FileText, Search, Users } from "lucide-react";
+import { History as IconoCabecera } from "lucide-react";
+import { CabeceraFormacion } from "@/components/EstiloFormacion";
 import { useContacts } from "@/hooks/useContacts";
 import { useLlamadasGlobales } from "@/hooks/useLlamadasGlobales";
 import { toast } from "sonner";
@@ -124,10 +126,7 @@ export default function HistorialContactos() {
 
   return (
     <div className="space-y-6 p-4 md:p-8 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Historial de Contactos</h1>
-        <p className="text-muted-foreground mt-1">Consulta todas las interacciones registradas con tus clientes.</p>
-      </div>
+      <CabeceraFormacion icono={IconoCabecera} titulo="Historial" subtitulo="Todas las llamadas, WhatsApps y notas de tus clientas" />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Selector de Cliente */}

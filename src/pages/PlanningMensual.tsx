@@ -2,12 +2,13 @@ import { useState, useEffect, useMemo } from "react";
 import { noProponerLlamar } from "@/lib/marcas";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Phone, MessageCircle, Search, X, FileText, Calendar, ChevronLeft, ChevronRight, Star, ExternalLink, RefreshCw } from "lucide-react";
+import { Phone, MessageCircle, Search, X, FileText, Calendar, ChevronLeft, ChevronRight, ExternalLink, RefreshCw } from "lucide-react";
+import { Calendar as IconoCabecera } from "lucide-react";
+import { CabeceraFormacion } from "@/components/EstiloFormacion";
 import { useContacts } from "@/hooks/useContacts";
 import { useLlamadasGlobales } from "@/hooks/useLlamadasGlobales";
 import { useSupabaseVentas } from "@/hooks/useSupabaseVentas";
 import { useRellamar } from "@/hooks/useRellamar";
-import { usePrioritarios } from "@/hooks/usePrioritarios";
 import ModalAnotacion from "@/components/ModalAnotacion";
 import { toast } from "sonner";
 import { confirmarLlamada } from "@/lib/callDialog";
@@ -21,7 +22,6 @@ interface ClientePlanificado {
   diasSinContacto: number;
   ultimaLlamada: string | null;
   estado: "urgente" | "esta_semana" | "este_mes" | "contactado" | "rellamar";
-  esPrioritario: boolean;
   esSinContactar: boolean;
 }
 
@@ -90,7 +90,6 @@ export default function PlanningMensual({ onViewContact }: PlanningMensualProps)
   const { contactos: historialGlobal, addContacto, getUltimoContacto, getDiasDesdeUltimoContacto, getContactosPorContacto, reloadFromStorage } = useLlamadasGlobales();
   const { ventas } = useSupabaseVentas();
   const { esRellamar, toggleRellamar, quitarRellamar } = useRellamar();
-  const { esPrioritario, togglePrioritario } = usePrioritarios();
   
   const [searchTerm, setSearchTerm] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<string | null>(null);
@@ -170,18 +169,13 @@ export default function PlanningMensual({ onViewContact }: PlanningMensualProps)
           ? `Venta ${new Date(ultimaVenta!).toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" })}`
           : ultimoContacto ? ultimoContacto.fechaLocal : null,
         estado,
-        esPrioritario: esPrioritario(contact.id),
         esSinContactar: !!contact.sinContactar,
       };
     }).sort((a, b) => {
-      // Priorizar clientes marcados
-      if (a.esPrioritario && !b.esPrioritario) return -1;
-      if (!a.esPrioritario && b.esPrioritario) return 1;
-
-      // Si ambos son prioritarios o ninguno, ordenar por días sin contacto (descendente)
+      // Primero los que llevan más días sin contacto
       return b.diasSinContacto - a.diasSinContacto;
     });
-  }, [contacts, historialGlobal, getDiasDesdeUltimoContacto, getUltimoContacto, esPrioritario, ultimaVentaPorContacto]);
+  }, [contacts, historialGlobal, getDiasDesdeUltimoContacto, getUltimoContacto, ultimaVentaPorContacto]);
 
   const clientesUrgentes = clientesPlanificados.filter((c) => c.estado === "urgente");
   const clientesContactados = clientesPlanificados.filter((c) => c.estado === "contactado");
@@ -287,37 +281,25 @@ export default function PlanningMensual({ onViewContact }: PlanningMensualProps)
     const estaRellamar = esRellamar(cliente.id);
     let borderColor = "border-gray-300";
     let bgColor = "bg-gray-50";
-    if (estaRellamar) { borderColor = "border-yellow-400"; bgColor = "bg-yellow-50"; }
-    else if (cliente.estado === "urgente") { borderColor = "border-red-500"; bgColor = "bg-red-50"; }
-    else if (cliente.estado === "contactado") { borderColor = "border-green-500"; bgColor = "bg-green-50"; }
-    else if (cliente.estado === "esta_semana") { borderColor = "border-orange-500"; bgColor = "bg-orange-50"; }
-    else if (cliente.estado === "este_mes") { borderColor = "border-yellow-500"; bgColor = "bg-yellow-50"; }
+    // Regla de colores (21/10/2026): blanco; rojo si es urgente, verde si ya está contactada.
+    bgColor = "bg-white";
+    if (cliente.estado === "urgente") borderColor = "border-red-500";
+    else if (cliente.estado === "contactado") borderColor = "border-green-500";
+    else borderColor = "border-gray-300";
 
     const calVisible = expandedCalendario === cliente.id;
 
     return (
       <Card key={cliente.id} className={`p-4 border-l-4 ${borderColor} ${bgColor} hover:shadow-lg transition-shadow relative overflow-hidden group`}>
-        <button
-          onClick={() => togglePrioritario(cliente.id)}
-          className={`absolute top-0 right-0 px-2 py-0.5 text-[10px] font-bold rounded-bl flex items-center gap-1 transition-colors ${
-            cliente.esPrioritario
-              ? "bg-yellow-400 text-yellow-900 hover:bg-yellow-500"
-              : "bg-gray-100 text-gray-400 hover:bg-yellow-100 hover:text-yellow-700"
-          }`}
-          title={cliente.esPrioritario ? "Quitar prioritario" : "Marcar como prioritario"}
-        >
-          <Star size={10} fill={cliente.esPrioritario ? "currentColor" : "none"} />
-          {cliente.esPrioritario ? "PRIORITARIO" : "+"}
-        </button>
         {estaRellamar && (
-          <div className="absolute top-0 left-0 bg-yellow-300 text-yellow-900 px-2 py-0.5 text-[10px] font-bold rounded-br flex items-center gap-1">
+          <div className="absolute top-0 left-0 bg-gray-200 text-gray-700 px-2 py-0.5 text-[10px] font-bold rounded-br flex items-center gap-1">
             📞 RELLAMAR
           </div>
         )}
         {cliente.esSinContactar && !estaRellamar && (
           <button
             onClick={() => quitarSinContactar(cliente.id)}
-            className="absolute top-0 left-0 bg-purple-200 text-purple-800 hover:bg-purple-300 px-2 py-0.5 text-[10px] font-bold rounded-br flex items-center gap-1 transition-colors"
+            className="absolute top-0 left-0 bg-gray-200 text-gray-700 hover:bg-gray-300 px-2 py-0.5 text-[10px] font-bold rounded-br flex items-center gap-1 transition-colors"
             title="Quitar marca 'Sin contactar'"
           >
             🆕 SIN CONTACTAR ✕
@@ -356,16 +338,16 @@ export default function PlanningMensual({ onViewContact }: PlanningMensualProps)
           </div>
           <div className="flex flex-col gap-2 ml-3">
             <Button size="sm" onClick={() => handleLlamada(cliente)} className="bg-green-600" title="Registrar llamada"><Phone size={16} /></Button>
-            <Button size="sm" onClick={() => handleWhatsApp(cliente)} className="bg-green-500" title="WhatsApp"><MessageCircle size={16} /></Button>
+            <Button size="sm" onClick={() => handleWhatsApp(cliente)} className="bg-white border border-green-300 text-green-700 hover:bg-green-50" title="WhatsApp"><MessageCircle size={16} /></Button>
             <Button
               size="sm"
               onClick={() => handleRellamar(cliente)}
-              className={`${estaRellamar ? "bg-gray-400 hover:bg-gray-500" : "bg-yellow-400 hover:bg-yellow-500"} text-yellow-900 font-bold`}
+              className={`${estaRellamar ? "bg-gray-300 hover:bg-gray-400" : "bg-white border border-gray-300 hover:bg-gray-50"} text-gray-700 font-bold`}
               title={estaRellamar ? "Quitar marca de rellamar" : "Marcar para rellamar (contestador)"}
             >
               📞
             </Button>
-            <Button size="sm" onClick={() => handleAbrirAnotacion(cliente)} className="bg-blue-600" title="Añadir nota"><FileText size={16} /></Button>
+            <Button size="sm" onClick={() => handleAbrirAnotacion(cliente)} className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50" title="Añadir nota"><FileText size={16} /></Button>
           </div>
         </div>
       </Card>
@@ -385,7 +367,7 @@ export default function PlanningMensual({ onViewContact }: PlanningMensualProps)
 
   return (
     <div className="space-y-6 p-4 md:p-8">
-      <h1 className="text-3xl font-bold">Planning Mensual</h1>
+      <CabeceraFormacion icono={IconoCabecera} titulo="Planning mensual" />
       <div className="space-y-3 bg-gray-50 p-4 rounded-lg">
         <div className="relative">
           <Search className="absolute left-3 top-3 text-gray-400" size={20} />
@@ -397,21 +379,21 @@ export default function PlanningMensual({ onViewContact }: PlanningMensualProps)
           <button onClick={() => setFiltroEstado("contactado")} className={`px-4 py-2 rounded-lg text-sm ${filtroEstado === "contactado" ? "bg-green-600 text-white" : "bg-white border"}`}>Contactados ({clientesContactados.length})</button>
           <button
             onClick={() => setFiltroEstado("zona_playa")}
-            className={`px-4 py-2 rounded-lg text-sm ${filtroEstado === "zona_playa" ? "bg-blue-600 text-white" : "bg-white border"}`}
+            className={`px-4 py-2 rounded-lg text-sm ${filtroEstado === "zona_playa" ? "bg-green-600 text-white" : "bg-white border"}`}
           >
             📍 Mi zona ({clientesPlanificados.filter(c => contacts.find(ct => ct.id === c.id)?.zonaPlaya).length})
           </button>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setFiltroEstado("sin_contactar")}
-              className={`px-4 py-2 rounded-lg text-sm ${filtroEstado === "sin_contactar" ? "bg-purple-600 text-white" : "bg-white border"}`}
+              className={`px-4 py-2 rounded-lg text-sm ${filtroEstado === "sin_contactar" ? "bg-green-600 text-white" : "bg-white border"}`}
             >
               🆕 Sin contactar ({clientesPlanificados.filter(c => contacts.find(ct => ct.id === c.id)?.sinContactar).length})
             </button>
             <button
               onClick={limpiarSinContactarYaContactados}
               disabled={limpiandoSinContactar}
-              className="p-2 rounded-lg bg-white border text-purple-600 hover:bg-purple-50 disabled:opacity-50"
+              className="p-2 rounded-lg bg-white border text-gray-600 hover:bg-gray-50 disabled:opacity-50"
               title="Quitar la marca 'Sin contactar' a los que ya han sido contactados"
             >
               <RefreshCw size={14} className={limpiandoSinContactar ? "animate-spin" : ""} />
@@ -435,13 +417,13 @@ export default function PlanningMensual({ onViewContact }: PlanningMensualProps)
             <p className="font-bold text-gray-900">¿Cuándo quieres rellamar a <span className="text-yellow-700">{rellamarDialogCliente.nombre.split(' ')[0]}</span>?</p>
             <div className="flex gap-2">
               <button
-                className="flex-1 py-2 bg-yellow-400 hover:bg-yellow-500 text-yellow-900 font-bold rounded-lg"
+                className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg"
                 onClick={() => handleConfirmarRellamar()}
               >
                 Cuando pueda
               </button>
               <button
-                className={`flex-1 py-2 font-bold rounded-lg border-2 border-yellow-400 text-yellow-900 ${fechaRellamarInput ? "bg-yellow-100 hover:bg-yellow-200" : "opacity-50 cursor-not-allowed"}`}
+                className={`flex-1 py-2 font-bold rounded-lg border-2 border-gray-300 text-gray-700 ${fechaRellamarInput ? "bg-white hover:bg-gray-50" : "opacity-50 cursor-not-allowed"}`}
                 onClick={() => { if (fechaRellamarInput) handleConfirmarRellamar(fechaRellamarInput); }}
                 disabled={!fechaRellamarInput}
               >

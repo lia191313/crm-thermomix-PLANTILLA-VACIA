@@ -52,6 +52,7 @@
   <li>Instalar la app en el móvil y en el ordenador</li>
   <li>Cuidados del día a día</li>
   <li class="opcional">Opcional: poner tus pueblos en "Mi zona"</li>
+  <li class="opcional">Opcional: tus frases de llamada y tus zonas</li>
   <li class="opcional">Opcional (avanzado): avisos al móvil</li>
 </ol>
 </div>
@@ -97,7 +98,7 @@
   <li>Pulsa <span class="boton">Run</span> <span class="en">(ejecutar)</span>, abajo a la derecha.</li>
   <li>Si sale un aviso que dice algo como <em>"Potential issue detected… destructive operation"</em> <span class="en">(posible operación peligrosa)</span>, es normal: el archivo está preparado para poder repetirse sin romper nada. Pulsa <span class="boton">Run this query</span> <span class="en">(ejecutar igualmente)</span>.</li>
 </ol>
-<div class="ok">✅ Vas bien si abajo aparece una lista de <strong>18 tablas</strong> (anotaciones, contacts, demos…) y todas dicen <code>true</code> en la columna <strong>rls_activo</strong>.</div>
+<div class="ok">✅ Vas bien si abajo aparece una lista de <strong>25 tablas</strong> (anotaciones, comisiones, contacts, demos, equipo, eventos…) y todas dicen <code>true</code> en la columna <strong>rls_activo</strong>.</div>
 <div class="ojo">Si sale un error en rojo: no pasa nada, no se ha estropeado nada. Vuelve a pegar el texto <strong>entero</strong> y pulsa Run otra vez. Si sigue saliendo, haz una foto de pantalla del mensaje rojo y pide ayuda (ver "Si algo falla" al final).</div>
 
 <h3>2.3 · Copiar tus 2 claves</h3>
@@ -195,6 +196,15 @@
   <code>export const MUNICIPIOS_ZONA_PLAYA: string[] = ["Sabadell", "Terrassa", "Sant Quirze"];</code></li>
   <li>Pulsa <span class="boton">Commit changes…</span> <span class="en">(guardar cambios)</span> y otra vez <span class="boton">Commit changes</span>. Netlify vuelve a publicar la app sola en 3 minutos.</li>
 </ol>
+
+<!-- ================================================================== -->
+<h2 class="opcional">Opcional · Poner tus frases de llamada y tus zonas</h2>
+<p>Se cambian igual que "Mi zona" (abrir el archivo en tu GitHub → lápiz ✏️ → cambiar → <span class="boton">Commit changes</span>):</p>
+<ul>
+  <li><strong>Frases de llamada de "Mi día"</strong>: archivo <code>src/lib/frasesLlamadas.ts</code>. Cambia <code>[tu nombre]</code> por tu nombre y, si quieres, las frases por las tuyas. Cada frase va entre comillas.</li>
+  <li><strong>Zonas de los listados</strong> (para agrupar a la gente por pueblos): archivo <code>src/lib/zonas.ts</code>. Ya trae los pueblos de la provincia de Barcelona; lo que no esté sale en "Lejos / otros".</li>
+</ul>
+<p>Todo lo demás (promociones, objetivos del mes, equipo, calendario, comisiones, plantillas de mensajes) se rellena <strong>desde la propia app</strong>, sin tocar nada aquí.</p>
 
 <!-- ================================================================== -->
 <h2 class="opcional">Opcional (avanzado) · Avisos al móvil</h2>

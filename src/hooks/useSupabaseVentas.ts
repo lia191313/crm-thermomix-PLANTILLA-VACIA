@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { loadRemindersFromSupabase } from './useReminders';
+import { ETAPAS_EMBUDO } from '@/lib/embudo';
 
 export interface Venta {
   id: string;
@@ -23,6 +25,83 @@ const _listeners = new Set<(ventas: Venta[]) => void>();
 function notifyListeners(ventas: Venta[]) {
   _ventasCache = ventas;
   _listeners.forEach(fn => fn(ventas));
+}
+
+/**
+ * Al guardar una venta, la ficha de la clienta pasa a "⭐ TM7" (o el modelo
+ * vendido): la ⭐ marca que es clienta mía. Del modelo de la venta solo se
+ * coge el "TMx" ("TM7+Cutter+Garantía" o "TM7 Renove TM5" → TM7).
+ * Si falla no se para nada: la venta ya está guardada.
+ */
+export function modeloParaFicha(modeloVenta: string | null | undefined): string | null {
+  const tm = String(modeloVenta ?? "").toUpperCase().match(/TM\s?\d+/);
+  return tm ? `⭐ ${tm[0].replace(/\s/g, "")}` : null;
+}
+
+/**
+ * Aviso de seguimiento un mes después de la bienvenida (21/10/2026), a las
+ * 10:00. Sin bienvenida con fecha, se cuenta desde hoy. Formato de
+ * `recordatorios.fecha`: hora local tal cual, sin zona.
+ */
+export const NOTA_SEGUIMIENTO_MES =
+  "Seguimiento 1 mes tras la bienvenida: ¿qué tal con la Thermomix? ¿Alguna duda? Invitarla a una clase.";
+
+export function fechaSeguimientoMes(fechaBienvenida: string | null | undefined, hoy = new Date()): string {
+  const base = fechaBienvenida && /^\d{4}-\d{2}-\d{2}/.test(fechaBienvenida)
+    ? new Date(fechaBienvenida.slice(0, 10) + "T00:00:00")
+    : hoy;
+  const d = new Date(base.getFullYear(), base.getMonth() + 1, base.getDate());
+  // Si cae en fin de semana, pasa al lunes.
+  if (d.getDay() === 6) d.setDate(d.getDate() + 2);
+  if (d.getDay() === 0) d.setDate(d.getDate() + 1);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T10:00:00`;
+}
+
+async function crearSeguimientoMes(contactoId: number, contactoNombre: string, fechaBienvenida: string | null) {
+  if (!contactoId) return;
+  try {
+    const { data: existente } = await supabase
+      .from('recordatorios')
+      .select('id')
+      .eq('contacto_id', contactoId)
+      .eq('completado', false)
+      .eq('notas', NOTA_SEGUIMIENTO_MES)
+      .maybeSingle();
+    if (existente) return;
+    const fecha = fechaSeguimientoMes(fechaBienvenida);
+    await supabase.from('recordatorios').insert([{
+      contacto_id: contactoId,
+      contacto_nombre: contactoNombre,
+      descripcion: contactoNombre,
+      tipo: 'seguimiento',
+      fecha,
+      fecha_programada: fecha,
+      completado: false,
+      notas: NOTA_SEGUIMIENTO_MES,
+    }]);
+    await loadRemindersFromSupabase();
+  } catch (error) {
+    console.error('Error creando el seguimiento de 1 mes:', error);
+  }
+}
+
+/** Si la persona estaba en el embudo (lib/embudo.ts), al venderle pasa a "Venta". */
+async function pasarAVentaEnEmbudo(contactoId: number | null | undefined) {
+  if (!contactoId) return;
+  const { error } = await supabase
+    .from('contacts')
+    .update({ estado_lead: 'Venta' })
+    .eq('id', contactoId)
+    .in('estado_lead', ETAPAS_EMBUDO.map((e) => e.id).filter((id) => id !== 'Agente'));
+  if (error) console.error('Error pasando a Venta en el embudo:', error);
+}
+
+async function ponerModeloEnFicha(contactoId: number | null | undefined, modeloVenta: string) {
+  const modelo = modeloParaFicha(modeloVenta);
+  if (!contactoId || !modelo) return;
+  const { error } = await supabase.from('contacts').update({ modelo }).eq('id', contactoId);
+  if (error) console.error('Error poniendo el modelo en la ficha:', error);
 }
 
 export function useSupabaseVentas() {
@@ -209,6 +288,8 @@ export function useSupabaseVentas() {
       };
       
       notifyListeners([newVenta, ..._ventasCache]);
+      await ponerModeloEnFicha(data.contacto_id, data.modelo);
+      await pasarAVentaEnEmbudo(data.contacto_id);
 
       if (data.fecha_bienvenida) {
         await crearRecordatorioBienvenida(data.contacto_id, data.contacto_nombre, data.fecha_bienvenida);
@@ -251,10 +332,24 @@ export function useSupabaseVentas() {
         updated_at: data.updated_at,
       } : v);
       notifyListeners(nuevaLista);
+      if (updates.modelo !== undefined) {
+        await ponerModeloEnFicha(data.contacto_id, updates.modelo);
+      }
 
-      if (updates.fecha_bienvenida) {
-        const venta = _ventasCache.find(v => v.id === id);
-        if (venta) {
+      const venta = _ventasCache.find(v => v.id === id);
+      if (venta) {
+        if (updates.bienvenida_realizada) {
+          // Bienvenida hecha: se cierra su recordatorio de bienvenida y se
+          // crea el aviso de seguimiento un mes después.
+          await supabase
+            .from('recordatorios')
+            // completado_en va en hora local sin zona, como en useReminders.
+            .update({ completado: true, completado_en: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 19) })
+            .eq('contacto_id', venta.contacto_id)
+            .eq('tipo', 'bienvenida')
+            .eq('completado', false);
+          await crearSeguimientoMes(venta.contacto_id, venta.contacto_nombre, venta.fecha_bienvenida);
+        } else if (updates.fecha_bienvenida && !venta.bienvenida_realizada) {
           await crearRecordatorioBienvenida(venta.contacto_id, venta.contacto_nombre, updates.fecha_bienvenida);
         }
       }

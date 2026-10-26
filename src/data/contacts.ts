@@ -13,6 +13,7 @@ export interface Contact {
   recibeDifusion?: boolean;
   origen?: string | null;
   estado_lead?: string | null;
+  recomendada_por?: number | null;
 }
 
 export const contacts: Contact[] = [];

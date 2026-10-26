@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Trash2, CheckCircle2, Clock, ShoppingBag, PartyPopper, X, Edit2 } from "lucide-react";
+import { CabeceraFormacion } from "@/components/EstiloFormacion";
 import { useSupabaseVentas, type Venta } from "@/hooks/useSupabaseVentas";
 import { useContacts } from "@/hooks/useContacts";
 import { coincideBusqueda } from "@/lib/listados";
@@ -187,6 +188,7 @@ export default function Ventas() {
       // tipo sin romper el flujo de edición.
       origen: "",
       estado_lead: "",
+      recomendada_por: null,
     });
     setModelo(venta.modelo);
     setFechaVenta(venta.fecha_venta);
@@ -250,13 +252,11 @@ export default function Ventas() {
     <div className="space-y-6 p-4 md:p-8 max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <ShoppingBag className="text-primary" size={28} />
-            Ventas y Bienvenidas
-          </h1>
-          <p className="text-muted-foreground mt-1">Registro de ventas TM7 y seguimiento de bienvenidas</p>
-        </div>
+        <CabeceraFormacion
+          icono={ShoppingBag}
+          titulo="Ventas y bienvenidas"
+          subtitulo="Registro de ventas y seguimiento de bienvenidas"
+        />
         <Button onClick={() => setShowForm(true)} className="gap-2 w-full md:w-auto">
           <Plus size={16} /> Nueva Venta
         </Button>
@@ -264,26 +264,26 @@ export default function Ventas() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card className="p-4 border-l-4 border-green-500">
+        <Card className="p-4 bg-white">
           <p className="text-xs text-muted-foreground uppercase font-medium">Ventas este mes</p>
-          <p className="text-3xl font-bold text-green-600">{stats.ventasMes}</p>
+          <p className="text-3xl font-bold text-gray-800">{stats.ventasMes}</p>
           {stats.ventasMesAnterior > 0 && (
             <p className="text-xs text-muted-foreground mt-1">
               vs {stats.ventasMesAnterior} el mes anterior
             </p>
           )}
         </Card>
-        <Card className="p-4 border-l-4 border-orange-500">
+        <Card className="p-4 bg-white">
           <p className="text-xs text-muted-foreground uppercase font-medium">Bienvenidas pendientes</p>
-          <p className="text-3xl font-bold text-orange-500">{stats.bienvenidsPendientes.length}</p>
+          <p className="text-3xl font-bold text-gray-800">{stats.bienvenidsPendientes.length}</p>
         </Card>
-        <Card className="p-4 border-l-4 border-blue-500">
+        <Card className="p-4 bg-white">
           <p className="text-xs text-muted-foreground uppercase font-medium">Bienvenidas este mes</p>
-          <p className="text-3xl font-bold text-blue-600">{stats.bienvendidasMes}</p>
+          <p className="text-3xl font-bold text-gray-800">{stats.bienvendidasMes}</p>
         </Card>
-        <Card className="p-4 border-l-4 border-purple-500">
+        <Card className="p-4 bg-white">
           <p className="text-xs text-muted-foreground uppercase font-medium">Total ventas</p>
-          <p className="text-3xl font-bold text-purple-600">{stats.totalVentas}</p>
+          <p className="text-3xl font-bold text-gray-800">{stats.totalVentas}</p>
         </Card>
       </div>
 
@@ -448,10 +448,10 @@ export default function Ventas() {
                 key={venta.id}
                 className={`p-4 flex flex-col md:flex-row md:items-center gap-4 border-l-4 ${
                   venta.bienvenida_realizada
-                    ? "border-l-green-400 bg-green-50/20"
+                    ? "border-l-green-400 bg-white"
                     : bienvenidaUrgente
-                    ? "border-l-red-500 bg-red-50/20"
-                    : "border-l-orange-400"
+                    ? "border-l-red-500 bg-white"
+                    : "border-l-gray-300 bg-white"
                 }`}
               >
                 <div className="flex-1 space-y-1">
@@ -498,7 +498,7 @@ export default function Ventas() {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="gap-1 border-orange-300 text-orange-700 hover:bg-orange-50"
+                      className="gap-1 border-gray-300 text-gray-700 hover:bg-gray-50"
                       onClick={() => handleDesmarcarBienvenida(venta)}
                       title="Marcar como pendiente de nuevo"
                     >

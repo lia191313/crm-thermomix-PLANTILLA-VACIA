@@ -10,7 +10,7 @@ const hoyISO = () => {
 };
 
 /**
- * Pregunta cuándo volver a llamar a un cliente: día (obligatorio), hora y
+ * Pregunta cuándo volver a llamar a una clienta: día (obligatorio), hora y
  * una nota. Devuelve "AAAA-MM-DD", "HH:MM" y la nota al confirmar.
  */
 export default function RellamarDialog({

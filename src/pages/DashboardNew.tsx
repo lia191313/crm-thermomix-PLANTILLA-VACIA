@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { noProponerLlamar } from "@/lib/marcas";
+import { calcularProximosClientes } from "@/lib/proximosClientes";
+import { esContactoReal } from "@/lib/marcas";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Phone, MessageCircle, Calendar, Clock, CheckCircle2, AlertCircle, TrendingUp, Users, ExternalLink, User, Star, Home, ShoppingBag, PartyPopper, Award } from "lucide-react";
+import { Phone, MessageCircle, Calendar, Clock, CheckCircle2, AlertCircle, TrendingUp, Users, ExternalLink, User, Star, Home, ShoppingBag, PartyPopper, Award, BarChart3 } from "lucide-react";
 import { useContacts } from "@/hooks/useContacts";
 import { useLlamadasGlobales } from "@/hooks/useLlamadasGlobales";
 import { useReminders } from "@/hooks/useReminders";
@@ -19,6 +20,7 @@ import { toast } from "sonner";
 import { confirmarLlamada } from "@/lib/callDialog";
 import RellamarHoyCard from "@/components/RellamarHoyCard";
 import RecordatoriosHoyCard from "@/components/RecordatoriosHoyCard";
+import { TMX, TituloSeccion, CabeceraFormacion } from "@/components/EstiloFormacion";
 
 interface DashboardProps {
   onViewContact?: (id: number) => void;
@@ -76,146 +78,11 @@ export default function Dashboard({ onViewContact, onNavigate }: DashboardProps)
   }, [refreshTrigger, forceRefresh]);
 
 
-  // Helper: calcular días desde una fecha normalizada al día (ignora horas)
-  const diasDesdeFecha = useCallback((fecha: string | Date | null | undefined): number => {
-    if (!fecha) return 999;
-    const hoy = new Date();
-    const hoyNorm = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
-    const d = new Date(fecha);
-    if (isNaN(d.getTime())) return 999;
-    const dNorm = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const diff = hoyNorm.getTime() - dNorm.getTime();
-    return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
-  }, []);
-
-  // Helpers de normalización para emparejar ventas/demos legacy con contactos
-  // (los contacto_id pueden estar rotos tras migrar de localStorage a Supabase)
-  const normPhone = useCallback((t: string | null | undefined): string => {
-    if (!t) return "";
-    const solo = String(t).replace(/\D/g, "");
-    // Quitar prefijo +34 si está, para comparar por los 9 dígitos nacionales
-    return solo.startsWith("34") && solo.length > 9 ? solo.slice(-9) : solo;
-  }, []);
-  const normName = useCallback((n: string | null | undefined): string => {
-    if (!n) return "";
-    return String(n)
-      .toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // quitar acentos
-      .replace(/\[cedido\]/g, "")
-      .replace(/thermomix/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-  }, []);
-
-  // Calcular próximos clientes: los marcados como rellamar SIEMPRE aparecen, más los 10 prioritarios
-  const proximosClientes = useMemo(() => {
-    if (!contacts || contacts.length === 0) return [];
-
-    // Excluir ⛔ (archivados) y 🤝/🔇 ("solo si me necesita"): no se les propone llamar
-    const contactosFiltrados = contacts.filter(c => !noProponerLlamar(c.nombre));
-
-    const todos = contactosFiltrados.map(contact => {
-      const contactTel = normPhone(contact.telefono);
-      const contactName = normName(contact.nombre);
-
-      // Un registro "pertenece" a este contacto si:
-      //  (a) su id numérico coincide, O
-      //  (b) el teléfono normalizado coincide (cubre typos en el nombre), O
-      //  (c) el nombre normalizado coincide (fallback final)
-      const perteneceAContacto = (
-        regId: number | string | null | undefined,
-        regTel: string | null | undefined,
-        regNombre: string | null | undefined
-      ): boolean => {
-        if (regId != null && Number(regId) === Number(contact.id)) return true;
-        const rTel = normPhone(regTel);
-        if (contactTel && rTel && contactTel === rTel) return true;
-        const rName = normName(regNombre);
-        if (contactName && rName && contactName === rName) return true;
-        return false;
-      };
-
-      // 1) Días desde última interacción (llamada, whatsapp, difusión)
-      const diasInteracciones = getDiasDesdeUltimoContacto(contact.id);
-
-      // 2) Días desde última venta o bienvenida (vender o hacer bienvenida = contacto)
-      const diasEventosVenta: number[] = [];
-      ventas.forEach(v => {
-        if (perteneceAContacto(v.contacto_id, v.contacto_telefono, v.contacto_nombre)) {
-          if (v.fecha_venta) diasEventosVenta.push(diasDesdeFecha(v.fecha_venta));
-          if (v.bienvenida_realizada && v.fecha_bienvenida) {
-            diasEventosVenta.push(diasDesdeFecha(v.fecha_bienvenida));
-          }
-        }
-      });
-      const diasVentas = diasEventosVenta.length > 0 ? Math.min(...diasEventosVenta) : 999;
-
-      // 3) Días desde última demo (hacer demo = contacto directo)
-      // Demos solo tienen contactoId y contactoNombre (no teléfono)
-      const diasDemosArr: number[] = [];
-      demos.forEach(d => {
-        if (perteneceAContacto(d.contactoId, null, d.contactoNombre) && d.fecha) {
-          diasDemosArr.push(diasDesdeFecha(d.fecha));
-        }
-      });
-      const diasDemos = diasDemosArr.length > 0 ? Math.min(...diasDemosArr) : 999;
-
-      // Tomar el mínimo: el contacto más reciente manda
-      const diasSinContacto = Math.min(diasInteracciones, diasVentas, diasDemos);
-
-      const reminder = reminders.find(r => r.contactId === contact.id);
-      const marcadoRellamar = rellamarIds.includes(contact.id);
-      
-      let prioridad = 0;
-      if (marcadoRellamar) {
-        prioridad = 200;
-      } else if (diasSinContacto === 999) {
-        // Nunca contactados: aparecen siempre los primeros
-        prioridad = 10000;
-      } else if (reminder) {
-        if (diasSinContacto >= reminder.frequency) prioridad = 100 + (diasSinContacto - reminder.frequency);
-      } else if (diasSinContacto >= 30) {
-        prioridad = 50 + (diasSinContacto - 30);
-      } else {
-        // NO mostrar clientes con menos de 30 días sin contacto (ya fueron contactados recientemente)
-        prioridad = 0;
-      }
-      
-      return { ...contact, diasSinContacto, prioridad, marcadoRellamar };
-    });
-
-    // Separar los marcados como rellamar (siempre visibles)
-    const rellamar = todos.filter(c => c.marcadoRellamar);
-
-    // Limitar los nunca-contactados a 5 para que no se coman toda la agenda
-    const nuncaContactados = todos
-      .filter(c => !c.marcadoRellamar && c.diasSinContacto === 999)
-      .slice(0, 5);
-
-    // El resto (+30 días sin contacto o recordatorio vencido), excluyendo nunca-contactados
-    const resto = todos
-      .filter(
-        c =>
-          !c.marcadoRellamar &&
-          c.diasSinContacto !== 999 &&
-          c.prioridad > 0
-      )
-      .sort((a, b) => b.prioridad - a.prioridad)
-      .slice(0, 15);
-
-    // Combinar sin duplicados: primero rellamar, luego nunca-contactados, luego resto
-    const combinado = [...rellamar];
-    [...nuncaContactados, ...resto].forEach(c => {
-      if (!combinado.find(r => r.id === c.id)) {
-        combinado.push(c);
-      }
-    });
-
-    // Excluir clientes con snooze activo
-    const sinAplazados = combinado.filter(c => !isSnoozed(c.id));
-
-    return sinAplazados.sort((a, b) => b.prioridad - a.prioridad).slice(0, 20);
-  }, [contacts, rellamarIds, reminders, getDiasDesdeUltimoContacto, ventas, demos, diasDesdeFecha, normPhone, normName, isSnoozed]);
+  // Agenda de hoy: el cálculo está en lib/proximosClientes (lo comparte con "Mi día")
+  const proximosClientes = useMemo(
+    () => calcularProximosClientes({ contacts, rellamarIds, reminders, ventas, demos, getDiasDesdeUltimoContacto, isSnoozed }),
+    [contacts, rellamarIds, reminders, getDiasDesdeUltimoContacto, ventas, demos, isSnoozed]
+  );
 
   // Recalcular stats cuando cambian
   const displayStats = useMemo(() => {
@@ -345,7 +212,7 @@ export default function Dashboard({ onViewContact, onNavigate }: DashboardProps)
     const hoyStr = hoy.toDateString();
     
     const interaccionesHoy = contactos.filter(c => 
-      new Date(c.fecha).toDateString() === hoyStr && c.tipo !== "rellamar" && !excludedIds.has(c.contactoId)
+      new Date(c.fecha).toDateString() === hoyStr && esContactoReal(c.tipo) && !excludedIds.has(c.contactoId)
     );
     
     const contactosUnicos = Array.from(
@@ -359,7 +226,7 @@ export default function Dashboard({ onViewContact, onNavigate }: DashboardProps)
   const contactadosMes = useMemo(() => {
     const fmActual = fiscalMonthOf(new Date());
     const interaccionesMes = contactos.filter(c =>
-      isInFiscalMonth(new Date(c.fecha), fmActual) && c.tipo !== "rellamar" && !excludedIds.has(c.contactoId)
+      isInFiscalMonth(new Date(c.fecha), fmActual) && esContactoReal(c.tipo) && !excludedIds.has(c.contactoId)
     );
 
     const contactosUnicos = Array.from(
@@ -383,58 +250,55 @@ export default function Dashboard({ onViewContact, onNavigate }: DashboardProps)
   return (
     <div className="space-y-8 p-4 md:p-8 max-w-7xl mx-auto">
       {/* Header con Fecha */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Panel de Control</h1>
-          <p className="text-muted-foreground mt-1">
-            {new Date().toLocaleDateString("es-ES", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </p>
-        </div>
-      </div>
+      <CabeceraFormacion
+        icono={BarChart3}
+        titulo="Panel de control"
+        subtitulo={new Date().toLocaleDateString("es-ES", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+      />
 
       <RecordatoriosHoyCard onAbrir={() => onNavigate?.("recordatorios")} />
       <RellamarHoyCard onAbrir={() => onNavigate?.("listados")} />
 
       {/* Tarjetas de Estadísticas Comerciales */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <Card className="p-4 flex items-center gap-3 border-l-4 border-green-500 shadow-sm">
-          <div className="p-2 bg-green-100 rounded-full text-green-600"><ShoppingBag size={18} /></div>
+        <Card className="p-4 flex items-center gap-3 shadow-sm bg-white">
+          <div className="p-2 bg-gray-100 rounded-full text-gray-500"><ShoppingBag size={18} /></div>
           <div>
             <p className="text-xs text-muted-foreground font-medium uppercase leading-tight">Ventas mes</p>
-            <p className="text-2xl font-bold text-green-600">{statsVentas.ventasMes}</p>
+            <p className="text-2xl font-bold text-gray-800">{statsVentas.ventasMes}</p>
           </div>
         </Card>
-        <Card className="p-4 flex items-center gap-3 border-l-4 border-purple-500 shadow-sm">
-          <div className="p-2 bg-purple-100 rounded-full text-purple-600"><Star size={18} /></div>
+        <Card className="p-4 flex items-center gap-3 shadow-sm bg-white">
+          <div className="p-2 bg-gray-100 rounded-full text-gray-500"><Star size={18} /></div>
           <div>
             <p className="text-xs text-muted-foreground font-medium uppercase leading-tight">Demos mes</p>
-            <p className="text-2xl font-bold text-purple-600">{statsDemos.demosMes}</p>
+            <p className="text-2xl font-bold text-gray-800">{statsDemos.demosMes}</p>
           </div>
         </Card>
-        <Card className="p-4 flex items-center gap-3 border-l-4 border-orange-500 shadow-sm">
-          <div className="p-2 bg-orange-100 rounded-full text-orange-600"><PartyPopper size={18} /></div>
+        <Card className="p-4 flex items-center gap-3 shadow-sm bg-white">
+          <div className="p-2 bg-gray-100 rounded-full text-gray-500"><PartyPopper size={18} /></div>
           <div>
             <p className="text-xs text-muted-foreground font-medium uppercase leading-tight">Bienvenidas</p>
-            <p className="text-2xl font-bold text-orange-500">{statsVentas.bienvenidsPendientes.length}</p>
+            <p className="text-2xl font-bold text-gray-800">{statsVentas.bienvenidsPendientes.length}</p>
             <p className="text-[10px] text-muted-foreground">pendientes</p>
           </div>
         </Card>
-        <Card className="p-4 flex items-center gap-3 border-l-4 border-blue-500 shadow-sm cursor-pointer hover:shadow-md transition-shadow" onClick={() => handleOpenContactadosModal('hoy')}>
-          <div className="p-2 bg-blue-100 rounded-full text-blue-600"><TrendingUp size={18} /></div>
+        <Card className="p-4 flex items-center gap-3 shadow-sm bg-white cursor-pointer hover:shadow-md transition-shadow" onClick={() => handleOpenContactadosModal('hoy')}>
+          <div className="p-2 bg-gray-100 rounded-full text-gray-500"><TrendingUp size={18} /></div>
           <div>
             <p className="text-xs text-muted-foreground font-medium uppercase leading-tight">Contactos hoy</p>
             <p className="text-2xl font-bold">{contactadosHoy.length}</p>
           </div>
         </Card>
-        <Card className="p-4 flex items-center gap-3 border-l-4 border-cyan-500 shadow-sm cursor-pointer hover:shadow-md transition-shadow" onClick={() => handleOpenContactadosModal('mes')}>
-          <div className="p-2 bg-cyan-100 rounded-full text-cyan-600"><Clock size={18} /></div>
+        <Card className="p-4 flex items-center gap-3 shadow-sm bg-white cursor-pointer hover:shadow-md transition-shadow" onClick={() => handleOpenContactadosModal('mes')}>
+          <div className="p-2 bg-gray-100 rounded-full text-gray-500"><Clock size={18} /></div>
           <div>
             <p className="text-xs text-muted-foreground font-medium uppercase leading-tight">Contactos mes</p>
             <p className="text-2xl font-bold">{contactadosMes.length}</p>
           </div>
         </Card>
-        <Card className="p-4 flex items-center gap-3 border-l-4 border-slate-400 shadow-sm">
-          <div className="p-2 bg-slate-100 rounded-full text-slate-600"><Users size={18} /></div>
+        <Card className="p-4 flex items-center gap-3 shadow-sm bg-white">
+          <div className="p-2 bg-gray-100 rounded-full text-gray-500"><Users size={18} /></div>
           <div>
             <p className="text-xs text-muted-foreground font-medium uppercase leading-tight">Total clientes</p>
             <p className="text-2xl font-bold">{activeContacts.length}</p>
@@ -445,12 +309,9 @@ export default function Dashboard({ onViewContact, onNavigate }: DashboardProps)
       {/* Sección Principal: Próximos Clientes */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="text-orange-500" size={24} />
-            <h2 className="text-xl font-bold">
-              Agenda de hoy ({proximosClientes.length} {proximosClientes.length === 1 ? "cliente" : "clientes"} prioritarios)
-            </h2>
-          </div>
+          <TituloSeccion color={TMX.azul} icono={AlertCircle}>
+            Agenda de hoy ({proximosClientes.length} {proximosClientes.length === 1 ? "cliente" : "clientes"})
+          </TituloSeccion>
           <p className="text-xs text-muted-foreground italic hidden sm:block">Los clientes no contactados permanecerán en tu agenda.</p>
         </div>
 
@@ -468,15 +329,9 @@ export default function Dashboard({ onViewContact, onNavigate }: DashboardProps)
                 <Card
                   key={cliente.id}
                   className={`p-4 hover:shadow-md transition-shadow border-l-4 flex flex-col justify-between group ${
-                    rellamar
-                      ? "border-l-yellow-400 bg-yellow-50/40"
-                      : cliente.modelo === "mio" || cliente.modelo?.startsWith("⭐")
-                      ? "border-l-green-500 bg-green-50/20"
-                      : cliente.modelo === "cedido" || cliente.nombre.startsWith("[CEDIDO]")
-                      ? "border-l-purple-500 bg-purple-50/20"
-                      : cliente.modelo === "adoptado"
-                      ? "border-l-blue-500 bg-blue-50/20"
-                      : "border-l-orange-400"
+                    cliente.diasSinContacto !== 999 && cliente.diasSinContacto >= 90
+                      ? "border-l-red-400 bg-white"
+                      : "border-l-gray-300 bg-white"
                   }`}
                 >
                   <div>
@@ -503,20 +358,14 @@ export default function Dashboard({ onViewContact, onNavigate }: DashboardProps)
                       </button>
                       <div className="flex flex-col items-end gap-1">
                         <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded uppercase whitespace-nowrap ${
-                          rellamar
-                            ? "bg-yellow-200 text-yellow-800"
-                            : cliente.diasSinContacto === 999
-                            ? "bg-purple-100 text-purple-700"
-                            : cliente.diasSinContacto >= 90
+                          cliente.diasSinContacto !== 999 && cliente.diasSinContacto >= 90
                             ? "bg-red-100 text-red-700"
-                            : cliente.diasSinContacto >= 60
-                            ? "bg-orange-100 text-orange-700"
-                            : "bg-yellow-100 text-yellow-800"
+                            : "bg-gray-100 text-gray-600"
                         }`}>
                           {cliente.diasSinContacto === 999 ? "NUEVO" : `${cliente.diasSinContacto}d`}
                         </span>
                         {rellamar && (
-                          <span className="px-1.5 py-0.5 bg-yellow-200 text-yellow-800 text-[9px] font-bold rounded uppercase whitespace-nowrap">
+                          <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[9px] font-bold rounded uppercase whitespace-nowrap">
                             📞 Rellamar
                           </span>
                         )}
@@ -525,7 +374,7 @@ export default function Dashboard({ onViewContact, onNavigate }: DashboardProps)
                     <div className="flex flex-col gap-1 mb-3">
                       <p className="text-xs text-muted-foreground truncate">{cliente.ubicacion}</p>
                       {cliente.zonaPlaya && (
-                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[9px] font-bold rounded uppercase w-fit">
+                        <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-[9px] font-bold rounded uppercase w-fit">
                           📍 Mi zona
                         </span>
                       )}
@@ -537,7 +386,7 @@ export default function Dashboard({ onViewContact, onNavigate }: DashboardProps)
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-1 gap-1 h-8 text-[11px] border-green-200 hover:bg-green-50 text-green-700"
+                        className="flex-1 gap-1 h-8 text-[11px] bg-green-600 hover:bg-green-700 text-white border-green-600"
                         onClick={() => handleLlamada(cliente.id, cliente.nombre, cliente.telefono)}
                         title="Registrar llamada exitosa"
                       >
@@ -546,7 +395,7 @@ export default function Dashboard({ onViewContact, onNavigate }: DashboardProps)
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-1 gap-1 h-8 text-[11px] border-blue-200 hover:bg-blue-50 text-blue-700"
+                        className="flex-1 gap-1 h-8 text-[11px] border-green-200 hover:bg-green-50 text-green-700"
                         onClick={() => handleWhatsApp(cliente.id, cliente.nombre, cliente.telefono)}
                         title="Enviar WhatsApp"
                       >
@@ -558,8 +407,8 @@ export default function Dashboard({ onViewContact, onNavigate }: DashboardProps)
                       size="sm"
                       className={`w-full h-8 text-[11px] gap-1 font-bold ${
                         rellamar
-                          ? "bg-gray-300 hover:bg-gray-400 text-gray-700"
-                          : "bg-yellow-400 hover:bg-yellow-500 text-yellow-900"
+                          ? "bg-gray-200 hover:bg-gray-300 text-gray-700"
+                          : "bg-white border border-gray-300 hover:bg-gray-50 text-gray-700"
                       }`}
                       onClick={() => handleRellamar(cliente.id, cliente.nombre, cliente.telefono)}
                       title={rellamar ? "Quitar marca de rellamar" : "Marcar para rellamar (contestador / no disponible)"}
@@ -569,7 +418,7 @@ export default function Dashboard({ onViewContact, onNavigate }: DashboardProps)
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="w-full h-8 text-[11px] text-purple-600 gap-1 hover:bg-purple-50"
+                      className="w-full h-8 text-[11px] text-gray-600 gap-1 hover:bg-gray-50"
                       onClick={() => { setSelectedContactId(cliente.id); setSelectedContactNombre(cliente.nombre); setShowModalDemo(true); }}
                     >
                       <Award size={14} /> Demo
@@ -589,7 +438,7 @@ export default function Dashboard({ onViewContact, onNavigate }: DashboardProps)
                         {([7, 15, 30] as const).map((days) => (
                           <button
                             key={days}
-                            className="flex-1 h-8 rounded text-[11px] font-semibold bg-slate-100 hover:bg-indigo-100 hover:text-indigo-700 text-slate-600 transition-colors"
+                            className="flex-1 h-8 rounded text-[11px] font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
                             onClick={() => {
                               snooze(cliente.id, days);
                               setSnoozeMenuOpen(null);
@@ -658,16 +507,16 @@ export default function Dashboard({ onViewContact, onNavigate }: DashboardProps)
       {rellamarDialogData && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl p-5 w-full max-w-sm space-y-3">
-            <p className="font-bold text-gray-900">¿Cuándo quieres rellamar a <span className="text-yellow-700">{rellamarDialogData.nombre.split(' ')[0]}</span>?</p>
+            <p className="font-bold text-gray-900">¿Cuándo quieres rellamar a <span className="text-green-700">{rellamarDialogData.nombre.split(' ')[0]}</span>?</p>
             <div className="flex gap-2">
               <button
-                className="flex-1 py-2 bg-yellow-400 hover:bg-yellow-500 text-yellow-900 font-bold rounded-lg"
+                className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg"
                 onClick={() => handleConfirmarRellamar()}
               >
                 Cuando pueda
               </button>
               <button
-                className={`flex-1 py-2 font-bold rounded-lg border-2 border-yellow-400 text-yellow-900 ${fechaRellamarInput ? "bg-yellow-100 hover:bg-yellow-200" : "opacity-50 cursor-not-allowed"}`}
+                className={`flex-1 py-2 font-bold rounded-lg border-2 border-gray-300 text-gray-700 ${fechaRellamarInput ? "bg-white hover:bg-gray-50" : "opacity-50 cursor-not-allowed"}`}
                 onClick={() => { if (fechaRellamarInput) handleConfirmarRellamar(fechaRellamarInput); }}
                 disabled={!fechaRellamarInput}
               >

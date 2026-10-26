@@ -17,6 +17,7 @@ export interface Contact {
   recibeDifusion?: boolean;
   origen?: string | null;
   estado_lead?: string | null;
+  recomendada_por?: number | null;
 }
 
 export const useContacts = () => {
@@ -64,6 +65,7 @@ export const useContacts = () => {
         recibeDifusion: c.recibe_difusion ?? false,
         origen: c.origen,
         estado_lead: c.estado_lead,
+        recomendada_por: c.recomendada_por ?? null,
       };
     });
   }, [supabaseContacts]);
@@ -101,6 +103,8 @@ export const useContacts = () => {
       sin_contactar: contact.sinContactar ?? false,
       origen: contact.origen,
       estado_lead: contact.estado_lead,
+      // Solo si viene: así editar la ficha desde otro sitio no lo borra.
+      ...(contact.recomendada_por !== undefined && { recomendada_por: contact.recomendada_por }),
     });
     return {
       ...updated,

@@ -24,11 +24,13 @@ export interface PersonaListado {
   rellamar_el: string | null;
   /** Mejor llamarla por la mañana o por la tarde (null = cualquier hora). */
   franja: 'manana' | 'tarde' | null;
+  /** Hora concreta para volver a llamar ("HH:MM:SS") o null. */
+  rellamar_hora: string | null;
   created_at: string;
   updated_at: string;
 }
 
-const PERSONA_COLUMNS = 'id,listado_id,nombre,apellidos,telefono,poblacion,estado,notas,llamadas,ultima_llamada,contact_id,rellamar_el,franja,created_at,updated_at';
+const PERSONA_COLUMNS = 'id,listado_id,nombre,apellidos,telefono,poblacion,estado,notas,llamadas,ultima_llamada,contact_id,rellamar_el,franja,rellamar_hora,created_at,updated_at';
 
 // Supabase devuelve como mucho 1000 filas por consulta: pedimos por tramos.
 async function fetchAll<T>(table: string, columns: string): Promise<T[]> {
@@ -176,14 +178,14 @@ export function useSupabaseListados() {
       .from('listado_personas')
       .delete()
       .eq('listado_id', id)
-      .neq('estado', 'descartado');
+      .not('estado', 'in', '(descartado,comercial)');
     if (e1) throw e1;
     const { error: e2 } = await supabase.from('listados').delete().eq('id', id);
     if (e2) throw e2;
     setListados((prev) => prev.filter((l) => l.id !== id));
     setPersonas((prev) =>
       prev
-        .filter((p) => p.listado_id !== id || p.estado === 'descartado')
+        .filter((p) => p.listado_id !== id || p.estado === 'descartado' || p.estado === 'comercial')
         .map((p) => (p.listado_id === id ? { ...p, listado_id: null } : p))
     );
   };

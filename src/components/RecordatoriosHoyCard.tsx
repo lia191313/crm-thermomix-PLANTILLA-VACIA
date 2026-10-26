@@ -20,25 +20,25 @@ export default function RecordatoriosHoyCard({ onAbrir }: { onAbrir: () => void 
   const primeros = hoy.slice(0, 4).map((r) => `${hora(r.nextReminder)} ${r.contactName.split(" ").slice(0, 2).join(" ")}`);
 
   return (
-    <Card className="p-4 border-l-4 border-blue-500 bg-blue-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <Card className={`p-4 border-l-4 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${vencidos.length > 0 ? "border-l-red-500" : "border-l-gray-300"}`}>
       <div className="flex items-center gap-3">
-        <div className="p-2 bg-blue-100 rounded-full text-blue-700"><Bell size={18} /></div>
+        <div className="p-2 bg-gray-100 rounded-full text-gray-600"><Bell size={18} /></div>
         <div>
-          <p className="font-semibold text-blue-900">
+          <p className="font-semibold text-gray-800">
             {hoy.length > 0
               ? `Hoy tienes ${hoy.length} ${hoy.length === 1 ? "recordatorio" : "recordatorios"}`
               : "No tienes recordatorios para hoy"}
             {vencidos.length > 0 && ` · ${vencidos.length} ${vencidos.length === 1 ? "pendiente" : "pendientes"} de días anteriores`}
           </p>
           {primeros.length > 0 && (
-            <p className="text-sm text-blue-800">
+            <p className="text-sm text-gray-600">
               {primeros.join(" · ")}
               {hoy.length > primeros.length && ` · y ${hoy.length - primeros.length} más`}
             </p>
           )}
         </div>
       </div>
-      <Button onClick={onAbrir} className="bg-blue-600 hover:bg-blue-700 text-white">
+      <Button onClick={onAbrir}>
         Ver recordatorios
       </Button>
     </Card>

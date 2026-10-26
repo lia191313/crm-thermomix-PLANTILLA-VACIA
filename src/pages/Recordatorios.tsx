@@ -4,11 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Phone, MessageCircle, CheckCircle, Trash2, AlertCircle, Clock, ExternalLink, Bell, BellOff, AlarmClock, CalendarPlus } from "lucide-react";
+import { Clock as IconoCabecera } from "lucide-react";
+import { CabeceraFormacion } from "@/components/EstiloFormacion";
 import { abrirEnGoogleCalendar, type TipoEvento } from "@/utils/googleCalendar";
 import { useSupabaseRecordatorios } from "@/hooks/useSupabaseRecordatorios";
 import { useReminders } from "@/hooks/useReminders";
 import { useRellamar } from "@/hooks/useRellamar";
 import { useContacts } from "@/hooks/useContacts";
+import { noProponerLlamar } from "@/lib/marcas";
 import { useLlamadasGlobales } from "@/hooks/useLlamadasGlobales";
 import { usePushSubscription } from "@/hooks/usePushSubscription";
 import ModalDemo from "@/components/ModalDemo";
@@ -27,6 +30,9 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
   const { reminders, completeReminder, snoozeReminder, deleteReminder, getOverdueReminders, getPendingReminders, getUpcomingReminders, getLaterReminders } = useReminders();
   const { rellamarIds, rellamarData, quitarRellamar, loading } = useRellamar();
   const { contacts } = useContacts();
+  // Si un recordatorio se guardó sin nombre, se muestra el del contacto.
+  const nombreDe = (r: { contactName: string; contactId: number }) =>
+    r.contactName?.trim() || contacts.find((c) => c.id === r.contactId)?.nombre || "Sin nombre";
   const { addContacto, contactos: interacciones } = useLlamadasGlobales();
   const {
     permission: pushPermission,
@@ -43,10 +49,20 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
       .filter(r => r.fecha_rellamada)
       .map(r => {
         const contact = contacts.find(c => c.id === r.contact_id);
-        return contact ? { ...r, contact } : null;
+        // ⛔ / 🤝 / 🔇 no se proponen para llamar aunque sigan marcados.
+        return contact && !noProponerLlamar(contact.nombre) ? { ...r, contact } : null;
       })
       .filter(Boolean) as Array<{ contact_id: number; fecha_rellamada: string; contact: typeof contacts[0] }>;
   }, [rellamarData, contacts]);
+
+  // "Para rellamar" sin fecha: nunca a nadie archivado (⛔) ni "Solo si me necesita" (🤝/🔇).
+  const paraRellamar = useMemo(
+    () =>
+      contacts.filter(
+        (c) => rellamarIds.includes(c.id) && !noProponerLlamar(c.nombre) && !rellamadasConFecha.find((r) => r.contact_id === c.id)
+      ),
+    [contacts, rellamarIds, rellamadasConFecha]
+  );
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -276,7 +292,7 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
   };
 
   const renderRellamadaConFecha = (contact: typeof contacts[0], fechaRellamada: string) => (
-    <Card key={`rellamada-${contact.id}`} className="p-4 border-l-4 border-l-orange-500 bg-orange-50/20 hover:shadow-md transition-shadow group">
+    <Card key={`rellamada-${contact.id}`} className="p-4 border-l-4 border-l-gray-300 bg-white hover:shadow-md transition-shadow group">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-3 flex-wrap">
@@ -287,7 +303,7 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
               <h3 className="font-display font-bold text-lg text-foreground">{contact.nombre}</h3>
               <ExternalLink size={12} className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
             </button>
-            <Badge className="bg-orange-500 text-white font-bold">📞 Rellamada</Badge>
+            <Badge className="bg-gray-100 text-gray-700 font-semibold hover:bg-gray-100">📞 Rellamada</Badge>
           </div>
           <div className="grid grid-cols-2 gap-4 text-sm mb-4">
             <div className="bg-white/50 p-3 rounded border border-gray-200">
@@ -316,7 +332,7 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
             </Button>
             <Button
               onClick={() => confirmarLlamada(contact.telefono)}
-              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+              className="gap-2 bg-white border border-green-300 text-green-700 hover:bg-green-50"
               size="sm"
             >
               <Phone className="w-4 h-4" />
@@ -348,10 +364,9 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
     return (
       <div className="space-y-3">
         {reminders.map((reminder) => (
-          <Card key={reminder.id} className={`p-4 hover:shadow-md transition-shadow border-l-4 group ${
-            reminder.type === "demo" ? "border-l-purple-600 bg-purple-50/20" :
-            reminder.type === "bienvenida" ? "border-l-orange-600 bg-orange-50/20" :
-            "border-l-blue-500 bg-blue-50/20"
+          <Card key={reminder.id} className={`p-4 hover:shadow-md transition-shadow border-l-4 group bg-white ${
+            (() => { const d = new Date(reminder.nextReminder); d.setHours(0, 0, 0, 0); return d < today; })()
+              ? "border-l-red-500" : "border-l-gray-300"
           }`}>
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
@@ -360,7 +375,7 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
                     onClick={() => onViewContact?.(reminder.contactId)}
                     className="text-left hover:text-blue-600 transition-colors flex items-center gap-1 group-hover:underline"
                   >
-                    <h3 className="font-display font-bold text-lg text-foreground">{reminder.contactName}</h3>
+                    <h3 className="font-display font-bold text-lg text-foreground">{nombreDe(reminder)}</h3>
                     <ExternalLink size={12} className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
                   </button>
                   {(() => {
@@ -375,25 +390,25 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
                     );
                   })()}
                   {reminder.type === "demo" && (
-                    <Badge className="bg-purple-600 text-white font-bold">📱 DEMO</Badge>
+                    <Badge className="bg-gray-100 text-gray-700 font-semibold hover:bg-gray-100">📱 DEMO</Badge>
                   )}
                   {reminder.type === "bienvenida" && (
-                    <Badge className="bg-orange-600 text-white font-bold">👋 Bienvenida</Badge>
+                    <Badge className="bg-gray-100 text-gray-700 font-semibold hover:bg-gray-100">👋 Bienvenida</Badge>
                   )}
                   {reminder.type === "clase" && (
-                    <Badge className="bg-blue-600 text-white font-bold">🎓 Clase</Badge>
+                    <Badge className="bg-gray-100 text-gray-700 font-semibold hover:bg-gray-100">🎓 Clase</Badge>
                   )}
                   {reminder.type === "reparacion" && (
-                    <Badge className="bg-red-600 text-white font-bold">🔧 Reparación</Badge>
+                    <Badge className="bg-gray-100 text-gray-700 font-semibold hover:bg-gray-100">🔧 Reparación</Badge>
                   )}
                   {reminder.type === "seguimiento" && (
-                    <Badge className="bg-green-600 text-white font-bold">📞 Seguimiento</Badge>
+                    <Badge className="bg-gray-100 text-gray-700 font-semibold hover:bg-gray-100">📞 Seguimiento</Badge>
                   )}
                   {reminder.type === "promocion" && (
-                    <Badge className="bg-yellow-600 text-white font-bold">🎁 Promoción</Badge>
+                    <Badge className="bg-gray-100 text-gray-700 font-semibold hover:bg-gray-100">🎁 Promoción</Badge>
                   )}
                   {reminder.type === "otro" && (
-                    <Badge className="bg-gray-600 text-white font-bold">⭐ Otro</Badge>
+                    <Badge className="bg-gray-100 text-gray-700 font-semibold hover:bg-gray-100">⭐ Otro</Badge>
                   )}
                 </div>
 
@@ -471,7 +486,7 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="gap-2 border-amber-300 text-amber-700 hover:bg-amber-50"
+                      className="gap-2 border-gray-300 text-gray-700 hover:bg-gray-50"
                     >
                       <AlarmClock className="w-4 h-4" />
                       Posponer
@@ -582,7 +597,7 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
                   onClick={() => handleDelete(reminder.id)}
                   variant="ghost"
                   size="sm"
-                  className="text-destructive hover:bg-destructive/10"
+                  className="text-gray-400 hover:text-destructive hover:bg-destructive/10"
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>
@@ -597,19 +612,16 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
   return (
     <div className="space-y-6 p-8">
       {/* Header */}
-      <div>
-        <h1 className="font-display text-3xl font-bold text-foreground">Recordatorios de Seguimiento</h1>
-        <p className="text-muted-foreground mt-1">Gestiona el seguimiento de tus contactos</p>
-      </div>
+      <CabeceraFormacion icono={IconoCabecera} titulo="Recordatorios" subtitulo="El seguimiento de tus contactos" />
 
       {/* Notificaciones push: tarjeta para activar/desactivar este dispositivo.
           Hay que tocar el botón en CADA dispositivo donde quieras recibir avisos
           (móvil + PC = dos clics, uno por sitio). */}
-      <Card className="p-4 border-blue-200 bg-blue-50/40">
+      <Card className="p-3 border-gray-200 bg-gray-50">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div className="flex items-start gap-3">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-              pushSubscribed ? "bg-blue-600 text-white" : "bg-blue-100 text-blue-600"
+              pushSubscribed ? "bg-gray-200 text-gray-600" : "bg-gray-100 text-gray-500"
             }`}>
               {pushSubscribed ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
             </div>
@@ -655,7 +667,7 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
                   }}
                   size="sm"
                   disabled={pushLoading || pushPermission === "denied"}
-                  className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+                  className="gap-2"
                 >
                   <Bell className="w-4 h-4" />
                   {pushLoading ? "..." : "Activar notificaciones"}
@@ -668,7 +680,7 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
 
       {/* Stats */}
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="p-6 border-destructive/20 bg-destructive/5">
+        <Card className="p-6 bg-white">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm text-muted-foreground">Vencidos</p>
@@ -678,34 +690,34 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
           </div>
         </Card>
 
-        <Card className="p-6 border-primary/20 bg-primary/5">
+        <Card className="p-6 bg-white">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm text-muted-foreground">Para Hoy</p>
-              <p className="font-display text-3xl font-bold text-primary mt-2">{pendingReminders.length + rellamadasHoy.length}</p>
+              <p className="font-display text-3xl font-bold text-gray-700 mt-2">{pendingReminders.length + rellamadasHoy.length}</p>
             </div>
-            <Clock className="w-8 h-8 text-primary/50" />
+            <Clock className="w-8 h-8 text-gray-300" />
           </div>
         </Card>
 
-        <Card className="p-6 border-blue-200 bg-blue-50">
+        <Card className="p-6 bg-white">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm text-muted-foreground">Próximos 7 días</p>
-              <p className="font-display text-3xl font-bold text-blue-600 mt-2">{upcomingReminders.length + rellamadasProximas.length}</p>
+              <p className="font-display text-3xl font-bold text-gray-700 mt-2">{upcomingReminders.length + rellamadasProximas.length}</p>
             </div>
-            <Clock className="w-8 h-8 text-blue-300" />
+            <Clock className="w-8 h-8 text-gray-300" />
           </div>
         </Card>
 
-        <Card className="p-6 border-indigo-200 bg-indigo-50">
+        <Card className="p-6 bg-white">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm text-muted-foreground">Más adelante</p>
-              <p className="font-display text-3xl font-bold text-indigo-600 mt-2">{laterReminders.length + rellamadasLejanas.length}</p>
+              <p className="font-display text-3xl font-bold text-gray-700 mt-2">{laterReminders.length + rellamadasLejanas.length}</p>
               <p className="text-xs text-muted-foreground mt-1">Día 8 a 90</p>
             </div>
-            <Clock className="w-8 h-8 text-indigo-300" />
+            <Clock className="w-8 h-8 text-gray-300" />
           </div>
         </Card>
       </div>
@@ -736,7 +748,7 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
           onClick={() => setActiveTab("upcoming")}
           className={`px-4 py-2 font-medium transition-colors ${
             activeTab === "upcoming"
-              ? "text-blue-600 border-b-2 border-blue-600"
+              ? "text-primary border-b-2 border-primary"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
@@ -746,7 +758,7 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
           onClick={() => setActiveTab("later")}
           className={`px-4 py-2 font-medium transition-colors ${
             activeTab === "later"
-              ? "text-indigo-600 border-b-2 border-indigo-600"
+              ? "text-primary border-b-2 border-primary"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
@@ -756,17 +768,17 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
           onClick={() => setActiveTab("rellamadas")}
           className={`px-4 py-2 font-medium transition-colors ${
             activeTab === "rellamadas"
-              ? "text-orange-600 border-b-2 border-orange-600"
+              ? "text-primary border-b-2 border-primary"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          Para Rellamar ({rellamarIds.length - rellamadasConFecha.length})
+          Para Rellamar ({paraRellamar.length})
         </button>
         <button
           onClick={() => setActiveTab("mananas")}
           className={`px-4 py-2 font-medium transition-colors ${
             activeTab === "mananas"
-              ? "text-amber-600 border-b-2 border-amber-600"
+              ? "text-primary border-b-2 border-primary"
               : "text-muted-foreground hover:text-foreground"
           }`}
           title="Vencidos y de hoy para llamar por la mañana (antes de las 15:00)"
@@ -839,15 +851,14 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
         })()}
         {activeTab === "rellamadas" && (
           <div className="space-y-3">
-            {(rellamarIds.length - rellamadasConFecha.length) === 0 ? (
+            {paraRellamar.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-muted-foreground">No hay contactos marcados para rellamar</p>
               </div>
             ) : (
-              contacts
-                .filter(c => rellamarIds.includes(c.id) && !rellamadasConFecha.find(r => r.contact_id === c.id))
+              paraRellamar
                 .map(contact => (
-                  <Card key={contact.id} className="p-4 border-l-4 border-l-orange-600 bg-orange-50/20 hover:shadow-md transition-shadow group">
+                  <Card key={contact.id} className="p-4 border-l-4 border-l-gray-300 bg-white hover:shadow-md transition-shadow group">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1">
                         <button
@@ -875,7 +886,7 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
                           </Button>
                           <Button
                             onClick={() => confirmarLlamada(contact.telefono)}
-                            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+                            className="gap-2 bg-white border border-green-300 text-green-700 hover:bg-green-50"
                             size="sm"
                           >
                             <Phone className="w-4 h-4" />
@@ -891,7 +902,7 @@ export default function Recordatorios({ onViewContact }: RecordatoriosProps) {
                           </Button>
                         </div>
                       </div>
-                      <Badge className="bg-orange-100 text-orange-700">Para Rellamar</Badge>
+                      <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Para Rellamar</Badge>
                     </div>
                   </Card>
                 ))
